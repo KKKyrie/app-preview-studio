@@ -1,0 +1,143 @@
+<script setup lang="ts">
+import FramePicker from '@/components/panels/FramePicker.vue'
+import BrandPanel from '@/components/panels/BrandPanel.vue'
+import ImageUploader from '@/components/panels/ImageUploader.vue'
+import LayoutPicker from '@/components/panels/LayoutPicker.vue'
+import ProjectPanel from '@/components/panels/ProjectPanel.vue'
+import ScreenshotList from '@/components/panels/ScreenshotList.vue'
+import SizePicker from '@/components/panels/SizePicker.vue'
+import TextEditor from '@/components/panels/TextEditor.vue'
+import ThemePicker from '@/components/panels/ThemePicker.vue'
+import PreviewStage from '@/components/stage/PreviewStage.vue'
+import ScreenshotCanvas from '@/components/stage/ScreenshotCanvas.vue'
+import { useExport } from '@/composables/useExport'
+import { useImageUpload } from '@/composables/useImageUpload'
+import { usePanelWidth } from '@/composables/usePanelWidth'
+import { usePersistence } from '@/composables/usePersistence'
+import { useProjectStore } from '@/stores/project'
+
+const store = useProjectStore()
+const { dragging } = useImageUpload()
+const { exporting, exportJob, exportHostEl, progress, exportActive, exportAll } = useExport()
+const { panelWidth, startPanelDrag, resetPanelWidth } = usePanelWidth()
+usePersistence()
+
+function setExportHost(el: unknown) {
+  exportHostEl.value = el instanceof HTMLElement ? el : null
+}
+</script>
+
+<template>
+  <div class="flex h-full flex-col bg-surface-950 text-ink-100">
+    <!-- 顶栏 -->
+    <header class="flex h-13 shrink-0 items-center gap-4 border-b border-line-800 px-4">
+      <div class="flex items-center gap-2.5">
+        <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden>
+          <rect x="7" y="3" width="18" height="26" rx="5" fill="#3b6fff" />
+          <rect x="9.5" y="6" width="13" height="20" rx="3" fill="#fff" />
+          <rect x="12" y="9" width="8" height="2" rx="1" fill="#3b6fff" />
+          <rect x="12" y="13" width="6" height="1.6" rx="0.8" fill="#86a8ff" />
+        </svg>
+        <div class="leading-tight">
+          <div class="text-sm font-semibold tracking-wide">App Preview Studio</div>
+          <div class="text-[10px] text-ink-500">应用商店预览图生成器</div>
+        </div>
+      </div>
+
+      <input
+        v-model="store.projectName"
+        class="w-52 rounded-md border border-transparent bg-surface-850 px-2.5 py-1.5 text-xs text-ink-200 outline-none transition hover:border-line-700 focus:border-brand-500"
+        placeholder="项目名称"
+      />
+
+      <div class="flex-1" />
+
+      <span
+        class="rounded-md bg-surface-850 px-2.5 py-1.5 text-xs tabular-nums text-ink-300 ring-1 ring-line-800"
+      >
+        {{ store.canvasSize.width }} × {{ store.canvasSize.height }}
+      </span>
+
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="rounded-md bg-surface-700 px-3 py-2 text-xs font-medium text-ink-200 transition hover:bg-surface-600 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="exporting"
+          @click="exportAll"
+        >
+          {{ exporting && progress.total > 0 ? `打包 ${progress.current}/${progress.total}…` : `批量 ZIP (${store.items.length})` }}
+        </button>
+
+        <button
+          type="button"
+          class="flex items-center gap-2 rounded-md bg-brand-500 px-4 py-2 text-xs font-medium text-white transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="exporting"
+          @click="exportActive"
+        >
+          <svg v-if="exporting && progress.total === 0" class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.3" stroke-width="3" />
+            <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+          </svg>
+          {{ exporting && progress.total === 0 ? '导出中…' : '导出 PNG' }}
+        </button>
+      </div>
+    </header>
+
+    <div class="flex min-h-0 flex-1">
+      <!-- 左侧表单面板（右缘手柄可拖拽调宽，最小 = 默认 320px） -->
+      <div class="relative shrink-0">
+        <aside
+          :style="{ width: `${panelWidth}px` }"
+          class="h-full space-y-6 overflow-y-auto border-r border-line-800 p-4"
+        >
+          <ScreenshotList />
+          <ImageUploader />
+          <SizePicker />
+          <LayoutPicker />
+          <FramePicker />
+          <ThemePicker />
+          <BrandPanel />
+          <TextEditor />
+          <ProjectPanel />
+        </aside>
+        <!-- 拖拽手柄：一半压在分隔线上，hover 高亮；双击恢复默认宽度 -->
+        <div
+          data-panel-resizer
+          class="absolute inset-y-0 -right-[3px] z-30 w-1.5 touch-none cursor-col-resize transition-colors hover:bg-brand-500/50"
+          title="拖拽调整面板宽度，双击恢复默认（最小 320px）"
+          @pointerdown.prevent="startPanelDrag"
+          @dblclick="resetPanelWidth"
+        />
+      </div>
+
+      <!-- 预览区 -->
+      <main class="relative min-w-0 flex-1">
+        <PreviewStage />
+
+        <!-- 拖拽遮罩 -->
+        <div
+          v-if="dragging"
+          class="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-brand-400 bg-surface-950/70 backdrop-blur-sm"
+        >
+          <p class="text-sm font-medium text-brand-300">松开以导入 App 截图</p>
+        </div>
+      </main>
+    </div>
+
+    <!-- 隐藏导出容器：按 1:1 原始像素渲染后截图 -->
+    <div
+      :ref="setExportHost"
+      aria-hidden="true"
+      class="pointer-events-none fixed top-0 -left-[100000px] opacity-100"
+    >
+      <ScreenshotCanvas
+        v-if="exportJob"
+        :key="`${exportJob.item.id}-${exportJob.width}x${exportJob.height}`"
+        :item="exportJob.item"
+        :width="exportJob.width"
+        :height="exportJob.height"
+        :brand="store.brand"
+      />
+    </div>
+  </div>
+</template>

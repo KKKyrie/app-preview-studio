@@ -1,0 +1,87 @@
+@import 'tailwindcss';
+
+@theme {
+  /* 工作台配色（深色工作室风格） */
+  --color-surface-950: #0b0c10;
+  --color-surface-900: #121318;
+  --color-surface-850: #171920;
+  --color-surface-800: #1d1f27;
+  --color-surface-700: #272a34;
+  --color-surface-600: #363a46;
+
+  --color-line-800: #24262f;
+  --color-line-700: #31343f;
+
+  --color-ink-50: #f5f6f8;
+  --color-ink-100: #e7e9ee;
+  --color-ink-300: #b6bac5;
+  --color-ink-400: #8d92a1;
+  --color-ink-500: #6b7080;
+
+  --color-brand-300: #86a8ff;
+  --color-brand-400: #5b8cff;
+  --color-brand-500: #3b6fff;
+  --color-brand-600: #2c55d6;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', Arial, sans-serif;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface-950);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 滚动条（工作台面板） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface-600) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-surface-600);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 滑块控件统一外观 */
+input[type='range'] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-surface-600);
+  outline: none;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-brand-400);
+  border: 2px solid var(--color-surface-950);
+  cursor: pointer;
+}
+input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-brand-400);
+  border: 2px solid var(--color-surface-950);
+  cursor: pointer;
+}
