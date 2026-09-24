@@ -6,7 +6,7 @@
 
 上传 App 截图 → 选择官方尺寸 → 套用版式 / 手机边框 / 主题 → 一键导出**精确像素**、**不带透明通道**的 PNG
 
-纯前端 · 本地运行 · 数据不出你的机器
+纯前端 · 打开即用 · 数据只保存在你的浏览器
 
 <p>
   <img src="https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue 3.5">
@@ -14,6 +14,12 @@
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind CSS 4">
   <img src="https://img.shields.io/badge/App%20Store%20Connect-%E5%B0%BA%E5%AF%B8%E5%AE%9E%E6%B5%8B-0071E3?style=flat-square" alt="尺寸实测">
+</p>
+
+<p>
+  <a href="https://app-preview-studio.kyrieliu.cn">
+    <img src="https://img.shields.io/badge/%F0%9F%8C%90%20%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-app--preview--studio.kyrieliu.cn-0071E3?style=flat-square" alt="在线体验 app-preview-studio.kyrieliu.cn">
+  </a>
 </p>
 
 <img src="docs/ui.png" width="900" alt="App Preview Studio 工作台">
@@ -58,6 +64,10 @@
 - 图片**点击选择 / 拖拽到窗口 / ⌘V 粘贴**均可；左侧表单面板宽度可**拖拽调节**（双击恢复默认）
 
 ## 🚀 快速开始
+
+**🌐 在线即开即用 → [app-preview-studio.kyrieliu.cn](https://app-preview-studio.kyrieliu.cn)**（纯前端应用，数据仍只保存在你的浏览器，不经过任何服务器）
+
+克隆到本地运行：
 
 ```bash
 git clone https://github.com/KKKyrie/app-preview-studio.git
