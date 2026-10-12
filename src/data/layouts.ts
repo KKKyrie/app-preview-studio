@@ -34,6 +34,12 @@ export interface TextPlacement {
   /** 水平偏移：align=center 时相对居中位置；left/right 时为边距 */
   x: number
   align: TextAlign
+  /**
+   * x 直接作为画布绝对坐标使用，忽略 align 的水平基准换算。
+   * 创意素材版式以**安全区**为基准（可能并非画布居中），需要这种精确定位；
+   * 截图版式不使用该字段，行为完全不变。
+   */
+  absolute?: boolean
 }
 
 /** 手机位置。y 相对 anchor 边；scale 相对画布高 */
@@ -68,6 +74,8 @@ export interface LayoutPreset {
 
 /** 文本块左边界（像素） */
 export function textLeft(p: TextPlacement, canvasW: number): number {
+  // 创意素材版式：x 即画布绝对坐标（安全区未必与画布居中对齐）
+  if (p.absolute) return p.x
   if (p.align === 'left') return p.x
   if (p.align === 'right') return canvasW - p.w + p.x
   return (canvasW - p.w) / 2 + p.x

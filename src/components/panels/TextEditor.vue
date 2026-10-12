@@ -4,13 +4,13 @@ import { computed } from 'vue'
 import { FONTS, fontWeights, nearestWeight } from '@/data/fonts'
 import { resolveTokens } from '@/data/themes'
 import type { TextSpec } from '@/types'
-import { useProjectStore } from '@/stores/project'
+import { useAssetStore } from '@/stores/assetStore'
 
 import ColorField from '@/components/ui/ColorField.vue'
 import PanelSection from '@/components/ui/PanelSection.vue'
 import RangeField from '@/components/ui/RangeField.vue'
 
-const store = useProjectStore()
+const store = useAssetStore()
 const item = computed(() => store.activeItem)
 const canvasW = computed(() => store.canvasSize.width)
 const tokens = computed(() =>
@@ -51,6 +51,7 @@ function setFont(key: 'headline' | 'subtitle', fontId: string) {
       <!-- 主标题 -->
       <div class="space-y-2.5">
         <textarea
+          data-text="headline"
           :value="item.headline.text"
           rows="2"
           class="w-full resize-y rounded-lg border border-line-700 bg-surface-850 px-3 py-2 text-sm text-ink-100 outline-none transition focus:border-brand-500"
@@ -116,6 +117,7 @@ function setFont(key: 'headline' | 'subtitle', fontId: string) {
       <!-- 副标题 -->
       <div class="space-y-2.5">
         <textarea
+          data-text="subtitle"
           :value="item.subtitle.text"
           rows="2"
           class="w-full resize-y rounded-lg border border-line-700 bg-surface-850 px-3 py-2 text-sm text-ink-100 outline-none transition focus:border-brand-500"

@@ -4,6 +4,14 @@ export type Orientation = 'portrait' | 'landscape'
 /** 设备组 */
 export type SizeGroup = 'iphone' | 'ipad'
 
+/** 画布坐标系下的像素矩形 */
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 /** App Store Connect 接受的一个截图上传尺寸（竖屏基准，横屏由方向开关交换宽高） */
 export interface ScreenshotSize {
   /** 唯一 id，如 `iphone-6.5-1284x2778` */
@@ -84,4 +92,68 @@ export interface CanvasItem {
   frame: FrameOptions
   /** 主题 token 覆盖（空串/undefined = 跟随主题） */
   themeOverrides: Partial<ThemeTokens>
+}
+
+/** 创意素材条目：一个「变体」的全部配置 */
+export interface CreativeItem {
+  id: string
+  /** 主体图 dataURL；null = 纯品牌排版（Apple 允许，不强制要求图片） */
+  image: string | null
+  imageName: string | null
+  bannerLayoutId: string
+  themeId: string
+  headline: TextSpec
+  subtitle: TextSpec
+  /** 版式参数（相对安全区的比率） */
+  params: Record<string, number>
+  /** 主体图圆角（px，随画布尺寸缩放后回传，故存比率） */
+  imageRadius: number
+  themeOverrides: Partial<ThemeTokens>
+}
+
+/**
+ * 两种素材（截图 / 创意素材）共用的条目字段子集。
+ * 共享面板（主题 / 文案 / 品牌 / 素材 / 项目）只依赖这一层，
+ * 因此同一份组件实现可以在两种工作台下复用。
+ */
+export interface SharedAssetItem {
+  id: string
+  image: string | null
+  imageName: string | null
+  themeId: string
+  themeOverrides: Partial<ThemeTokens>
+  headline: TextSpec
+  subtitle: TextSpec
+}
+
+/** 共享面板依赖的 store 能力（两种 store 都结构化满足） */
+export interface SharedAssetStore {
+  projectName: string
+  brand: BrandSpec
+  items: SharedAssetItem[]
+  activeItem: SharedAssetItem
+  canvasSize: { width: number; height: number }
+  patchActive(partial: Partial<SharedAssetItem>): void
+  patchBrand(partial: Partial<BrandSpec>): void
+  patchText(key: 'headline' | 'subtitle', partial: Partial<TextSpec>): void
+  setTheme(id: string): void
+  snapshot(opts: { withImages: boolean }): unknown
+  hydrate(raw: unknown): boolean
+  /** localStorage 持久化 key（两种素材完全隔离） */
+  storageKey: string
+  /** 品牌 logo 在 IndexedDB 中的 key */
+  brandKey: string
+  /** 文案字段的展示名，供合规检查使用 */
+  itemLabel(index: number): string
+}
+
+/** 安全区检查命中的一个元素 */
+export interface SafeAreaViolation {
+  /** 元素标识，对应画布上的 data-role */
+  role: 'brand' | 'headline' | 'subtitle' | 'image'
+  label: string
+  /** 超出安全区的像素数（>0），以及方向 */
+  over: { top: number; right: number; bottom: number; left: number }
+  /** 超出总量（用于排序） */
+  worst: number
 }

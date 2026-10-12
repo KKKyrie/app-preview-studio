@@ -2,11 +2,11 @@
 import { computed } from 'vue'
 
 import { THEMES } from '@/data/themes'
-import { useProjectStore } from '@/stores/project'
+import { useAssetStore } from '@/stores/assetStore'
 
 import PanelSection from '@/components/ui/PanelSection.vue'
 
-const store = useProjectStore()
+const store = useAssetStore()
 const item = computed(() => store.activeItem)
 </script>
 

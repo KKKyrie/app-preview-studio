@@ -1,9 +1,11 @@
 /**
- * 导出冒烟测试：真实点击「导出 PNG」，校验下载文件的目标像素尺寸。
+ * 导出冒烟测试：真实点击「导出 PNG」，校验
+ *   1. 目标像素尺寸
+ *   2. PNG 不含 alpha 通道（Apple 对截图与 Creative assets 的硬性要求）
  * 用法：node scripts/verify-export.mjs
  * 依赖：本机 Chrome + 运行中的 dev server (localhost:5173)
  */
-import { mkdtemp, readdir, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
@@ -19,6 +21,22 @@ function pngSize(file) {
   const width = Number(/pixelWidth:\s*(\d+)/.exec(out)?.[1])
   const height = Number(/pixelHeight:\s*(\d+)/.exec(out)?.[1])
   return { width, height }
+}
+
+/**
+ * 直接读 PNG IHDR 判定是否带 alpha 通道。
+ *
+ * 注意：像素「全不透明」不等于「没有 alpha 通道」——modern-screenshot 会输出
+ * colorType 6 (RGBA) 且 alpha 全为 255，sips / 肉眼都看不出来，但 Apple 会拒收。
+ * colorType: 0=灰度 2=RGB 3=调色板 4=灰度+Alpha 6=RGBA
+ */
+async function pngColorType(file) {
+  const buf = await readFile(file)
+  const isPng = buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  if (!isPng) return { colorType: -1, name: '非 PNG', hasAlpha: true }
+  const colorType = buf[25]
+  const names = { 0: 'Gray', 2: 'RGB', 3: 'Palette', 4: 'Gray+Alpha', 6: 'RGBA' }
+  return { colorType, name: names[colorType] ?? `未知(${colorType})`, hasAlpha: colorType === 4 || colorType === 6 }
 }
 
 async function waitForPng(dir, timeoutMs = 60_000) {
@@ -85,17 +103,21 @@ try {
 
   const file = await waitForPng(downloadDir)
   const { width, height } = pngSize(file)
+  const color = await pngColorType(file)
 
   const okW = width === EXPECTED.width
   const okH = height === EXPECTED.height
+  const okAlpha = !color.hasAlpha
 
   console.log(`导出文件: ${file}`)
   console.log(`实际尺寸: ${width} × ${height}`)
   console.log(`期望尺寸: ${EXPECTED.width} × ${EXPECTED.height}`)
   console.log(`尺寸校验: ${okW && okH ? 'PASS ✅' : 'FAIL ❌'}`)
+  console.log(`PNG 色彩类型: ${color.colorType} (${color.name})`)
+  console.log(`Alpha 通道校验: ${okAlpha ? 'PASS ✅（无 alpha）' : `FAIL ❌（含 alpha 通道，Apple 会拒收）`}`)
   console.log(`页面错误: ${pageErrors.length === 0 ? '无 ✅' : pageErrors.join(' | ')}`)
 
-  if (!okW || !okH || pageErrors.length > 0) process.exitCode = 1
+  if (!okW || !okH || !okAlpha || pageErrors.length > 0) process.exitCode = 1
 } finally {
   await browser.close()
   if (process.env.KEEP) {

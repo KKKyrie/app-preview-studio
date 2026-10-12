@@ -8,6 +8,9 @@
 
 纯前端 · 打开即用 · 数据只保存在你的浏览器
 
+> 🆕 **新增「创意素材」工作台**：iOS 27 起 App Store 支持的**标题图**与**搜索结果图**素材，
+> 内置**安全区实测数据**与**合规检查**，导出前就能发现问题。详见 [设计文档](docs/creative-assets-design.md)。
+
 <p>
   <img src="https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue 3.5">
   <img src="https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite 8">
@@ -59,9 +62,31 @@
 ### 🖼 导出与工程
 
 - 隐藏容器按 **1:1 原始像素**渲染后截图，输出**精确尺寸、不带 Alpha 通道**的 PNG（符合 Apple 上架规格）；多张可打包 **ZIP** 批量导出
+- 导出末端把图像重绘到 `alpha:false` 画布并用 `toBlob` 编码，剥离 alpha 通道（`toDataURL` 会硬编码输出 RGBA）
 - **webfont 按用量内嵌**：字体族 + CSS 字重匹配 + unicode-range ∩ 实际字符，三层过滤后转 base64 注入 —— 导出图在任何机器上渲染一致，不依赖本机字体
 - 截图组最多 10 张（App Store 单尺寸上限），可新增 / 复制 / 删除；编辑内容**自动保存**（配置存 localStorage、图片存 IndexedDB），项目可导出 / 导入 JSON 跨设备迁移
 - 图片**点击选择 / 拖拽到窗口 / ⌘V 粘贴**均可；左侧表单面板宽度可**拖拽调节**（双击恢复默认）
+
+### 🎨 创意素材（iOS 27 新坑位）
+
+顶栏下方的切换条在**「App 预览截图」**与**「创意素材」**两个工作台之间切换，两者数据与持久化完全隔离。
+
+| 坑位 | 比例 | 导出尺寸 |
+| :-- | :-- | :-- |
+| **标题图** Header | 21:9 | **3840 × 1646**（固定） |
+| **标题图** Header | 16:9 | **5244 × 2950**（仅 PNG） |
+| **搜索结果图** Search Results | 3:2 | **3840 × 2560** 或 **1920 × 1280** |
+| **搜索结果图** Search Results | 16:9 | **5244 × 2950**（仅 PNG） |
+
+去重后共 **5 个尺寸选项**——其中 **5244 × 2950 两个坑位共用**，一份文件可同时填两处
+（对应 App Store Connect 的「Use header asset in search results」）。
+
+- **安全区实测内置** —— Apple 从不公布安全区像素值，本工具的数值由**解析 Apple 官方 Sketch 模板**得到（3840×1646 → 1646×661；3840×2560 → 2168×1030；5244×2950 → 1402×962，均经对称性校验）
+- **安全区检查** —— 画布上标出安全区并对越界元素描红，面板逐项列出「超出 Npx（方向）」，顶栏实时徽章；主体图默认不检查（出血是设计意图）
+- **合规检查** —— 实时扫描文案中的价格 / 折扣 / 网址 / 版权符号 / 奖项榜单等 Apple 明令禁止的内容并给出改写建议
+- **4 种横幅版式**（居中主张 / 左文右图 / 上文下图 / 满幅图底），几何**以安全区为基准**，因此版式本身不会越界；「上文下图」会实测文案高度自动避开图文重叠
+- **变体组**最多 12 个 —— 呼应 Asset Library：预先备好多套（如夏季版 / 冬季版），审核通过后上线直接替换，无需提交新版本
+- 主体图**可选**：Apple 允许纯品牌 / 纯排版素材，不上传图片同样合规
 
 ## 🚀 快速开始
 
@@ -83,6 +108,8 @@ npm run preview    # 预览构建产物
 
 ## 📐 导出尺寸
 
+### App 预览截图
+
 | 设备 | 尺寸（px） | 对应机型（部分） |
 | :-- | :-- | :-- |
 | iPhone 6.5" | **1284 × 2778** | iPhone 14/13/12 Pro Max、15/16 Plus、16 Pro 等 |
@@ -92,16 +119,28 @@ npm run preview    # 预览构建产物
 
 > 横屏 = 交换宽高；同档位内 App Store 会自动缩放，每个尺寸组最多 10 张。
 
+### 创意素材（iOS 27 / iPadOS 27+）
+
+| 画布 | 用于坑位 | 安全区 | 来源 |
+| :-- | :-- | :-- | :-- |
+| **3840 × 1646** | 标题图 | 1646 × 661 @ (1097, 493) | 实测 |
+| **3840 × 2560** | 搜索结果图 | 2168 × 1030 @ (836, 765) | 实测 |
+| **1920 × 1280** | 搜索结果图 | 1084 × 515 @ (418, 383) | 推导（3:2 等比） |
+| **5244 × 2950** | **两个坑位共用** | 1402 × 962 @ (1921, 660) | 实测 |
+
+> 5244 × 2950 的安全区仅占画布 8.7% 且垂直偏上 334px，是所有尺寸中最难排的。
+
 ## 🧪 验证脚本
 
 需要本机安装 Chrome，且 `npm run dev` 正在运行：
 
 | 命令 | 覆盖内容 |
 | :-- | :-- |
-| `npm run verify:export` | 单张导出 → 校验 PNG 像素尺寸与不透明输出 |
+| `npm run verify:export` | 单张导出 → 校验 PNG 像素尺寸**与 alpha 通道** |
 | `npm run verify:workflow` | 批量 ZIP 导出 + 刷新后项目状态恢复 |
 | `npm run verify:fonts` | 字体选择 + 品牌 Logo / 名字（导出、刷新恢复、视觉产物） |
 | `npm run verify:panel` | 左侧面板拖拽调宽（默认 / 最小 320、双击复位、刷新保留） |
+| `npm run verify:creative` | 创意素材工作台：模式切换 / 坑位尺寸 / alpha / 安全区告警 / 合规命中 / 持久化隔离 |
 | `npm run capture:styles` | 6 布局 × 5 边框 × 10 主题 对比图 contact sheet |
 | `npm run docs:capture` | 重新生成本 README 的界面截图与主题样张（`docs/`） |
 
@@ -124,26 +163,44 @@ npm run preview    # 预览构建产物
 
 ```
 src/
-  constants/sizes.ts        # App Store Connect 实测截图尺寸表
-  data/{layouts,frames,themes,fonts}.ts   # 注册表：版式 / 边框 / 主题 / 字体
-  stores/project.ts         # 项目状态 + 品牌 + 截图组管理 + 快照/恢复
+  constants/
+    sizes.ts                # App Store Connect 实测截图尺寸表
+    placements.ts           # 创意素材坑位 + 尺寸 + 安全区（解析 Apple Sketch 模板实测）
+  data/
+    {layouts,frames,themes,fonts}.ts   # 注册表：版式 / 边框 / 主题 / 字体
+    bannerLayouts.ts        # 横幅版式（几何以安全区为基准）
+    compliance.ts           # Apple 素材内容规则（价格 / 网址 / 版权 / 奖项）
+  stores/
+    project.ts              # 截图项目状态（独立 localStorage key）
+    creative.ts             # 创意素材项目状态（独立 key，与截图互不覆盖）
+    mode.ts                 # 工作台模式
+    assetStore.ts           # 共享面板用的 store 门面
   composables/
-    useExport.ts            # 1:1 渲染导出 / 批量 ZIP / 字体按用量内嵌
-    usePersistence.ts       # localStorage + IndexedDB 自动保存
-    useImageUpload.ts       # 拖拽 / 粘贴上传
+    useExport.ts            # 1:1 渲染导出 / 批量 ZIP / 字体内嵌 / alpha 剥离
+    usePersistence.ts       # localStorage + IndexedDB 自动保存（两种素材各一份）
+    useImageUpload.ts       # 拖拽 / 粘贴上传（按工作台分发）
     usePanelWidth.ts        # 左侧面板拖拽调宽（最小 = 默认 320px）
+    useSafeArea.ts          # 安全区越界测量
+    useAspectRatio.ts       # 主体图宽高比异步加载
   assets/
     fonts.css               # 随包子集化字体 @font-face（得意黑 / 普惠体）
     fonts/                  # GB2312+ASCII 子集化 woff2（pyftsubset 生成）
   components/
+    ModeSwitch.vue          # 工作台切换条（含实时安全区 / 合规徽章）
     stage/                  # 画布渲染（内部仅内联样式，保证导出一致）
-    panels/                 # 左侧功能面板（含 BrandPanel 品牌面板）
+      ScreenshotCanvas.vue  # 截图画布
+      CreativeCanvas.vue    # 创意素材画布
+      SafeAreaOverlay.vue   # 安全区可视化（仅预览，不进导出）
+    panels/                 # 左侧功能面板
     ui/                     # 面板基础组件
 scripts/                    # 无头浏览器验证 / 配图生成脚本
-docs/                       # README 配图（界面截图 + 主题样张）
+docs/                       # README 配图 + 创意素材设计文档
 ```
 
 ## 📝 备注
 
-- 尺寸表以 **2026-09 App Store Connect** 后台实际要求为准，并对照 [Apple 官方截图规格](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications) 核验
+- 截图尺寸表以 **2026-09 App Store Connect** 后台实际要求为准，并对照 [Apple 官方截图规格](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications) 核验
+- 创意素材尺寸以 [Apple 官方 Creative assets specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/creative-assets-specifications) 为准；**安全区数值由本工具解析 Apple 官方 Sketch 模板实测得到**（Apple 不公布像素值），并经三画布对称性校验
+- 3:2 规格给的是 **区间**（1920×1280 ~ 3840×2560）而非枚举，故只提供两个端点值，不开放自定义；5244 × 2950 官方明确仅支持 `.png`，本工具统一导出 PNG（三处格式均合法，且中文小字无压缩伪影）
+- 素材内容需满足 Apple 的 4+ 内容分级；合规检查基于[官方最佳实践](https://developer.apple.com/app-store/asset-best-practices/)的明文条款，实际审核尺度可能更严
 - 所有数据只保存在本机浏览器，应用无任何后端、无网络请求

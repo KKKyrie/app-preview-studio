@@ -1,5 +1,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
+import { useCreativeStore } from '@/stores/creative'
+import { mode } from '@/stores/mode'
 import { useProjectStore } from '@/stores/project'
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -27,13 +29,16 @@ function pickImageFile(transfer: DataTransfer | null): File | null {
  */
 export function useImageUpload() {
   const store = useProjectStore()
+  const creative = useCreativeStore()
   const dragging = ref(false)
   let dragDepth = 0
 
   async function applyFile(file: File | null) {
     if (!file) return
     const dataUrl = await readFileAsDataUrl(file)
-    store.patchActive({ image: dataUrl, imageName: file.name })
+    // 拖拽 / 粘贴按当前工作台落到对应素材上
+    if (mode.value === 'creative') creative.patchActive({ image: dataUrl, imageName: file.name })
+    else store.patchActive({ image: dataUrl, imageName: file.name })
   }
 
   function onPaste(e: ClipboardEvent) {
@@ -68,7 +73,8 @@ export function useImageUpload() {
   }
 
   function clearImage() {
-    store.patchActive({ image: null, imageName: null })
+    if (mode.value === 'creative') creative.patchActive({ image: null, imageName: null })
+    else store.patchActive({ image: null, imageName: null })
   }
 
   onMounted(() => {

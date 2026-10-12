@@ -15,7 +15,18 @@ const props = defineProps<{
   canvasW: number
   /** 项目级品牌（logo + 名字），展示在主标题上方 */
   brand?: BrandSpec | null
+  /**
+   * 副标题与主标题的间距（占画布宽度比例）。
+   * 缺省 0.032 = 截图模式的既有取值；创意素材的安全区很矮（标题图仅 661px），
+   * 需要显式传更小的值，因此把它做成可覆盖的 prop 而非硬编码。
+   */
+  gapRatio?: number
+  /** 品牌行与主标题的间距（占画布宽度比例），缺省 0.022 */
+  logoGapRatio?: number
 }>()
+
+const gapRatio = computed(() => props.gapRatio ?? 0.032)
+const logoGapRatio = computed(() => props.logoGapRatio ?? 0.022)
 
 function boxStyle(p: TextPlacement) {
   const anchorTop = p.anchor === 'top'
@@ -55,7 +66,7 @@ const subtitleFontStyle = computed(() => ({
 
 const subtitleFollowStyle = computed(() => ({
   ...subtitleFontStyle.value,
-  margin: `${props.canvasW * 0.032}px 0 0`,
+  margin: `${props.canvasW * gapRatio.value}px 0 0`,
 }))
 
 /* ── 品牌行（logo + 名字，主标题上方） ── */
@@ -74,8 +85,8 @@ const brandRowStyle = computed(() => ({
       : props.placement.align === 'right'
         ? 'flex-end'
         : 'flex-start',
-  gap: `${props.canvasW * 0.022}px`,
-  marginBottom: `${props.canvasW * 0.032}px`,
+  gap: `${props.canvasW * logoGapRatio.value}px`,
+  marginBottom: `${props.canvasW * gapRatio.value}px`,
 }))
 
 const brandLogoStyle = computed(() => ({
@@ -101,18 +112,22 @@ const brandNameStyle = computed(() => ({
 <template>
   <div :style="boxStyleMain">
     <!-- 品牌行：logo + 名字，展示在主标题正上方 -->
-    <div v-if="hasBrand" :style="brandRowStyle">
+    <div v-if="hasBrand" :style="brandRowStyle" data-role="brand">
       <img v-if="brand!.logo" :src="brand!.logo" alt="" :style="brandLogoStyle" />
       <span v-if="brand!.name.trim()" :style="brandNameStyle">{{ brand!.name }}</span>
     </div>
 
-    <div :style="headlineStyle">{{ headline.text }}</div>
-    <div v-if="!subtitlePlacement && subtitle.text" :style="subtitleFollowStyle">
+    <div :style="headlineStyle" data-role="headline">{{ headline.text }}</div>
+    <div v-if="!subtitlePlacement && subtitle.text" :style="subtitleFollowStyle" data-role="subtitle">
       {{ subtitle.text }}
     </div>
   </div>
 
-  <div v-if="subtitlePlacement && subtitle.text" :style="subtitleBoxStyle">
+  <div
+    v-if="subtitlePlacement && subtitle.text"
+    :style="subtitleBoxStyle"
+    data-role="subtitle"
+  >
     <div :style="subtitleFontStyle">{{ subtitle.text }}</div>
   </div>
 </template>

@@ -2,15 +2,25 @@ import { domToPng } from 'modern-screenshot'
 import { nextTick, reactive, ref, shallowRef } from 'vue'
 import { zip } from 'fflate'
 
+import { useCreativeStore } from '@/stores/creative'
+import { mode } from '@/stores/mode'
 import { useProjectStore } from '@/stores/project'
-import type { CanvasItem } from '@/types'
+import type { CanvasItem, CreativeItem, Rect } from '@/types'
 
-export interface ExportJob {
-  item: CanvasItem
+export type ExportKind = 'screenshot' | 'creative'
+
+interface ExportJobBase {
   width: number
   height: number
-  filename: string
 }
+
+/**
+ * 导出任务。用 `kind` 作为判别式，使 `item` 能随分支一起收窄
+ * （否则模板里只能拿到 `CanvasItem | CreativeItem` 的联合类型）。
+ */
+export type ExportJob =
+  | (ExportJobBase & { kind: 'screenshot'; item: CanvasItem })
+  | (ExportJobBase & { kind: 'creative'; item: CreativeItem; safe: Rect })
 
 /** 模块级单例状态：App.vue 中的隐藏导出容器与按钮共享 */
 const exporting = ref(false)
@@ -21,6 +31,26 @@ const progress = reactive({ current: 0, total: 0 })
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'preview'
+}
+
+/**
+ * 等待导出节点内所有 <img> 解码完成。
+ *
+ * 创意素材的主体图尺寸依赖 useAspectRatio 的异步结果（图片 onload 后才拿到
+ * 宽高比，版式几何随之改变）。若不等就会截到「图还没参与布局」的中间态，
+ * 产出没有主体图的成品。因此解码与 nextTick 交替跑两轮，收敛到稳定画面。
+ */
+async function settleImages(root: HTMLElement) {
+  // 3 轮：图片解码 → 版式重排 → 文案块测量回填（「上文下图」依赖它定位主体图）
+  for (let round = 0; round < 3; round++) {
+    const imgs = Array.from(root.querySelectorAll('img'))
+    await Promise.all(
+      imgs.map((img) =>
+        img.decode ? img.decode().catch(() => undefined) : Promise.resolve(),
+      ),
+    )
+    await nextTick()
+  }
 }
 
 function downloadUrl(url: string, filename: string) {
@@ -57,6 +87,48 @@ function zipAsync(files: Record<string, Uint8Array>): Promise<Uint8Array> {
  *   4. 始终把结果作为 font.cssText 传入（空也要传占位注释，
  *      否则会 fallback 到库的全量抓取分支）。
  * ──────────────────────────────────────────────────────────────── */
+
+/**
+ * 去掉导出 PNG 的 alpha 通道。
+ *
+ * modern-screenshot 即使传了 backgroundColor，产出的 PNG 仍是 colorType 6 (RGBA)
+ * —— 像素确实全不透明（minAlpha=255），但文件格式层面仍带 alpha 通道。
+ * Apple 对 App Store 截图与 Creative assets 都明确要求「图片不能含 alpha 通道或任何透明」，
+ * 因此统一在导出末端把图像重绘到 alpha:false 的画布上，得到 colorType 2 (RGB)。
+ *
+ * ⚠️ 必须走 toBlob，不能用 toDataURL：Chrome 的 toDataURL('image/png') 无论画布是否
+ * alpha:false 都固定输出 colorType 6（已实测 Chrome 155），只有 toBlob 才会尊重
+ * alpha:false 并输出 colorType 2。
+ */
+async function flattenToOpaquePng(dataUrl: string): Promise<string> {
+  const img = new Image()
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('导出图像解码失败'))
+    img.src = dataUrl
+  })
+
+  const canvas = document.createElement('canvas')
+  canvas.width = img.naturalWidth
+  canvas.height = img.naturalHeight
+  const ctx = canvas.getContext('2d', { alpha: false })
+  if (!ctx) throw new Error('无法创建 2D 绘图上下文')
+  // alpha:false 的画布初始为不透明黑：铺一层底色再绘制，
+  // 保证边缘抗锯齿不会把「透明」当成有效颜色混进来。
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(img, 0, 0)
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  if (!blob) throw new Error('导出 PNG 编码失败')
+
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('导出 PNG 读取失败'))
+    reader.readAsDataURL(blob)
+  })
+}
 
 interface FontUsage {
   /** 字体族（去引号）→ 用到的字重 */
@@ -323,18 +395,22 @@ async function ensureFontsLoaded(usage: FontUsage): Promise<void> {
 
 export function useExport() {
   const store = useProjectStore()
+  const creative = useCreativeStore()
 
   /**
    * 在隐藏容器中按 1:1 原始像素渲染画布并截图。
    * 预览与导出使用同一组件与样式，保证所见即所得。
    */
-  async function renderItem(item: CanvasItem, width: number, height: number): Promise<string> {
-    exportJob.value = { item, width, height, filename: '' }
+  async function renderJob(job: ExportJob): Promise<string> {
+    exportJob.value = job
     try {
       await nextTick()
       const node = exportHostEl.value?.firstElementChild
       if (!node) throw new Error('导出节点未就绪')
       const root = node as HTMLElement
+
+      // 图片解码收敛（创意素材的主体图会改变版式几何）
+      await settleImages(root)
 
       // 强制布局 → 收集实际字体用量 → 等字体加载完 → 内嵌 CSS
       root.getBoundingClientRect()
@@ -342,30 +418,40 @@ export function useExport() {
       await ensureFontsLoaded(usage)
       const cssText = (await buildFontCssText(usage)).trim()
 
-      return await domToPng(root, {
-        width,
-        height,
-        scale: 1,
-        // Apple 要求截图不带透明通道：兜底填充不透明背景
-        backgroundColor: '#ffffff',
-        // 始终传非空 cssText：空字符串会 fallback 到库的全量抓取分支
-        font: { cssText: cssText || '/* system fonts only */' },
-      })
+      return await flattenToOpaquePng(
+        await domToPng(root, {
+          width: job.width,
+          height: job.height,
+          scale: 1,
+          // Apple 要求素材不带透明通道：兜底填充不透明背景
+          backgroundColor: '#ffffff',
+          // 始终传非空 cssText：空字符串会 fallback 到库的全量抓取分支
+          font: { cssText: cssText || '/* system fonts only */' },
+        }),
+      )
     } finally {
       exportJob.value = null
     }
   }
 
+  /* ── App 预览截图 ── */
+
+  function screenshotJob(item: CanvasItem) {
+    const { width, height } = store.canvasSize
+    return { kind: 'screenshot' as const, item, width, height }
+  }
+
   /** 导出当前截图（单张 PNG） */
   async function exportActive() {
     if (exporting.value) return
+    if (mode.value === 'creative') return exportCreativeActive()
     const item = store.activeItem
     if (!item) return
     exporting.value = true
     try {
       const { width, height } = store.canvasSize
       const filename = `${sanitizeFilename(store.projectName)}_${width}x${height}.png`
-      const dataUrl = await renderItem(item, width, height)
+      const dataUrl = await renderJob(screenshotJob(item))
       downloadUrl(dataUrl, filename)
     } finally {
       exporting.value = false
@@ -373,7 +459,7 @@ export function useExport() {
   }
 
   /** 批量导出整组截图（ZIP，文件名带序号） */
-  async function exportAll() {
+  async function exportScreenshotAll() {
     if (exporting.value || store.items.length === 0) return
     exporting.value = true
     const { width, height } = store.canvasSize
@@ -383,7 +469,7 @@ export function useExport() {
     try {
       const files: Record<string, Uint8Array> = {}
       for (let i = 0; i < store.items.length; i++) {
-        const dataUrl = await renderItem(store.items[i], width, height)
+        const dataUrl = await renderJob(screenshotJob(store.items[i]))
         files[`${base}_${width}x${height}_${String(i + 1).padStart(2, '0')}.png`] =
           await dataUrlToBytes(dataUrl)
         progress.current = i + 1
@@ -402,5 +488,87 @@ export function useExport() {
     }
   }
 
-  return { exporting, exportJob, exportHostEl, progress, exportActive, exportAll }
+  /* ── 创意素材 ── */
+
+  function creativeJob(item: CreativeItem) {
+    return {
+      kind: 'creative' as const,
+      item,
+      width: creative.canvasSize.width,
+      height: creative.canvasSize.height,
+      safe: creative.safeArea,
+    }
+  }
+
+  /**
+   * 导出当前创意素材变体。
+   *
+   * 5244 × 2950 是两个坑位共用的尺寸，同一份文件可同时填标题图与搜索结果图，
+   * 这里在文件名里带上提示，避免用户上传时搞混。
+   */
+  async function exportCreativeActive() {
+    if (exporting.value) return
+    const item = creative.activeItem
+    if (!item) return
+    exporting.value = true
+    try {
+      const { width, height } = creative.canvasSize
+      const base = sanitizeFilename(creative.projectName)
+      const both = creative.canvas.universal ? '_通用双坑位' : ''
+      const dataUrl = await renderJob(creativeJob(item))
+      downloadUrl(
+        dataUrl,
+        `${base}_${creative.canvas.aspect.replace(':', 'x')}${both}_${width}x${height}.png`,
+      )
+    } finally {
+      exporting.value = false
+    }
+  }
+
+  /** 批量导出创意素材变体（ZIP） */
+  async function exportCreativeAll() {
+    if (exporting.value || creative.items.length === 0) return
+    exporting.value = true
+    const { width, height } = creative.canvasSize
+    const base = sanitizeFilename(creative.projectName)
+    progress.total = creative.items.length
+    progress.current = 0
+    try {
+      const files: Record<string, Uint8Array> = {}
+      for (let i = 0; i < creative.items.length; i++) {
+        const dataUrl = await renderJob(creativeJob(creative.items[i]))
+        files[`${base}_${String(i + 1).padStart(2, '0')}_${width}x${height}.png`] =
+          await dataUrlToBytes(dataUrl)
+        progress.current = i + 1
+        await new Promise((r) => setTimeout(r, 0))
+      }
+      const zipped = await zipAsync(files)
+      const blobUrl = URL.createObjectURL(
+        new Blob([zipped as unknown as BlobPart], { type: 'application/zip' }),
+      )
+      downloadUrl(blobUrl, `${base}_${width}x${height}.zip`)
+    } finally {
+      exporting.value = false
+      progress.current = 0
+      progress.total = 0
+    }
+  }
+
+  /** 批量导出：按当前工作台分发（顶栏按钮调用） */
+  async function exportAll() {
+    return mode.value === 'creative' ? exportCreativeAll() : exportScreenshotAll()
+  }
+
+  return {
+    exporting,
+    exportJob,
+    exportHostEl,
+    progress,
+    /** 导出当前条目（按当前工作台分发） */
+    exportActive,
+    /** 批量导出 ZIP（按当前工作台分发） */
+    exportAll,
+    exportCreativeActive,
+    exportCreativeAll,
+  }
 }

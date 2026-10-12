@@ -1,14 +1,31 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+import { useAssetStore } from '@/stores/assetStore'
+import { mode } from '@/stores/mode'
 import { useProjectStore } from '@/stores/project'
 
 import PanelSection from '@/components/ui/PanelSection.vue'
 import RangeField from '@/components/ui/RangeField.vue'
 
-const store = useProjectStore()
+const store = useAssetStore()
+const project = useProjectStore()
 const brand = computed(() => store.brand)
 const canvasW = computed(() => store.canvasSize.width)
+
+/** 两种工作台的措辞不同：「每张截图」/「每个变体」 */
+const itemNoun = computed(() => (mode.value === 'creative' ? '变体' : '截图'))
+
+const copied = ref(false)
+
+/** 品牌在两种素材间独立存储，这里提供一次性的复制，省去重复上传 logo */
+function copyFromScreenshots() {
+  const src = project.brand
+  if (!src.logo && !src.name.trim()) return
+  store.patchBrand({ ...src })
+  copied.value = true
+  setTimeout(() => (copied.value = false), 2500)
+}
 
 const logoEl = ref<HTMLInputElement | null>(null)
 
@@ -116,8 +133,20 @@ function removeLogo() {
       </template>
 
       <p v-if="!brand.logo && !brand.name" class="text-[10px] leading-relaxed text-ink-500">
-        填写品牌名或上传 Logo 后，会在每张截图的主标题上方展示品牌行。
+        填写品牌名或上传 Logo 后，会在每张{{ itemNoun }}的主标题上方展示品牌行。
       </p>
+
+      <!-- 创意素材的品牌独立存储，可从截图项目一键复制，避免重复上传 logo -->
+      <template v-if="mode === 'creative' && !brand.logo && !brand.name">
+        <button
+          type="button"
+          class="w-full rounded-md border border-line-700 py-1.5 text-[11px] text-ink-300 transition hover:border-surface-600 hover:text-ink-100"
+          @click="copyFromScreenshots"
+        >
+          ⟲ 从「App 预览截图」复制品牌
+        </button>
+        <p v-if="copied" class="text-[10px] text-emerald-300">已复制截图项目的品牌设置</p>
+      </template>
     </div>
   </PanelSection>
 </template>

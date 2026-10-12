@@ -2,10 +2,11 @@
 import { ref } from 'vue'
 
 import PanelSection from '@/components/ui/PanelSection.vue'
-import { useProjectStore } from '@/stores/project'
+import { useAssetStore } from '@/stores/assetStore'
+import { mode } from '@/stores/mode'
 import { deleteImage } from '@/utils/imageStore'
 
-const store = useProjectStore()
+const store = useAssetStore()
 const importEl = ref<HTMLInputElement | null>(null)
 
 function exportProject() {
@@ -33,11 +34,13 @@ async function importProject(e: Event) {
 }
 
 async function clearAll() {
-  if (!confirm('确定清空本地保存的项目与所有截图吗？此操作不可恢复。')) return
+  const what = mode.value === 'creative' ? '创意素材' : '截图'
+  if (!confirm(`确定清空本地保存的${what}项目与所有图片吗？此操作不可恢复。`)) return
   try {
-    localStorage.removeItem('app-preview-studio.project.v1')
+    // 只清当前工作台那一份，另一种素材不受影响
+    localStorage.removeItem(store.storageKey)
     for (const item of store.items) await deleteImage(item.id)
-    await deleteImage('__brand__')
+    await deleteImage(store.brandKey)
   } finally {
     location.reload()
   }

@@ -1,22 +1,36 @@
 <script setup lang="ts">
-import FramePicker from '@/components/panels/FramePicker.vue'
+import { computed } from 'vue'
+
+import ModeSwitch from '@/components/ModeSwitch.vue'
+import BannerLayoutPicker from '@/components/panels/BannerLayoutPicker.vue'
 import BrandPanel from '@/components/panels/BrandPanel.vue'
+import CompliancePanel from '@/components/panels/CompliancePanel.vue'
+import CreativeImageUploader from '@/components/panels/CreativeImageUploader.vue'
+import FramePicker from '@/components/panels/FramePicker.vue'
 import ImageUploader from '@/components/panels/ImageUploader.vue'
 import LayoutPicker from '@/components/panels/LayoutPicker.vue'
+import PlacementPicker from '@/components/panels/PlacementPicker.vue'
 import ProjectPanel from '@/components/panels/ProjectPanel.vue'
+import SafeAreaPanel from '@/components/panels/SafeAreaPanel.vue'
 import ScreenshotList from '@/components/panels/ScreenshotList.vue'
 import SizePicker from '@/components/panels/SizePicker.vue'
 import TextEditor from '@/components/panels/TextEditor.vue'
 import ThemePicker from '@/components/panels/ThemePicker.vue'
+import VariantList from '@/components/panels/VariantList.vue'
+import CreativeStage from '@/components/stage/CreativeStage.vue'
 import PreviewStage from '@/components/stage/PreviewStage.vue'
 import ScreenshotCanvas from '@/components/stage/ScreenshotCanvas.vue'
+import CreativeCanvas from '@/components/stage/CreativeCanvas.vue'
 import { useExport } from '@/composables/useExport'
 import { useImageUpload } from '@/composables/useImageUpload'
 import { usePanelWidth } from '@/composables/usePanelWidth'
 import { usePersistence } from '@/composables/usePersistence'
+import { useCreativeStore } from '@/stores/creative'
+import { mode } from '@/stores/mode'
 import { useProjectStore } from '@/stores/project'
 
 const store = useProjectStore()
+const creative = useCreativeStore()
 const { dragging } = useImageUpload()
 const { exporting, exportJob, exportHostEl, progress, exportActive, exportAll } = useExport()
 const { panelWidth, startPanelDrag, resetPanelWidth } = usePanelWidth()
@@ -25,6 +39,43 @@ usePersistence()
 function setExportHost(el: unknown) {
   exportHostEl.value = el instanceof HTMLElement ? el : null
 }
+
+const isCreative = computed(() => mode.value === 'creative')
+
+/** 顶栏的尺寸徽章 + 项目名按工作台切换来源 */
+const currentProjectName = computed({
+  get: () => (isCreative.value ? creative.projectName : store.projectName),
+  set: (v: string) => {
+    if (isCreative.value) creative.projectName = v
+    else store.projectName = v
+  },
+})
+
+const sizeLabel = computed(() => {
+  const s = isCreative.value ? creative.canvasSize : store.canvasSize
+  return `${s.width} × ${s.height}`
+})
+
+const itemCount = computed(() => (isCreative.value ? creative.items.length : store.items.length))
+
+/** 拖拽遮罩文案随工作台变化 */
+const dropHint = computed(() =>
+  isCreative.value ? '松开以导入主体图（可选）' : '松开以导入 App 截图',
+)
+
+/**
+ * 隐藏导出容器挂载的画布。
+ * 先把 job 收敛成带判别字段的联合类型，模板里才能正确收窄 item 的具体类型。
+ */
+const screenshotJob = computed(() => {
+  const j = exportJob.value
+  return j && j.kind === 'screenshot' ? j : null
+})
+
+const creativeJob = computed(() => {
+  const j = exportJob.value
+  return j && j.kind === 'creative' ? j : null
+})
 </script>
 
 <template>
@@ -40,12 +91,14 @@ function setExportHost(el: unknown) {
         </svg>
         <div class="leading-tight">
           <div class="text-sm font-semibold tracking-wide">App Preview Studio</div>
-          <div class="text-[10px] text-ink-500">应用商店预览图生成器</div>
+          <div class="text-[10px] text-ink-500">
+            {{ isCreative ? '创意素材生成器' : '应用商店预览图生成器' }}
+          </div>
         </div>
       </div>
 
       <input
-        v-model="store.projectName"
+        v-model="currentProjectName"
         class="w-52 rounded-md border border-transparent bg-surface-850 px-2.5 py-1.5 text-xs text-ink-200 outline-none transition hover:border-line-700 focus:border-brand-500"
         placeholder="项目名称"
       />
@@ -53,9 +106,10 @@ function setExportHost(el: unknown) {
       <div class="flex-1" />
 
       <span
+        data-size-badge
         class="rounded-md bg-surface-850 px-2.5 py-1.5 text-xs tabular-nums text-ink-300 ring-1 ring-line-800"
       >
-        {{ store.canvasSize.width }} × {{ store.canvasSize.height }}
+        {{ sizeLabel }}
       </span>
 
       <div class="flex items-center gap-2">
@@ -65,7 +119,11 @@ function setExportHost(el: unknown) {
           :disabled="exporting"
           @click="exportAll"
         >
-          {{ exporting && progress.total > 0 ? `打包 ${progress.current}/${progress.total}…` : `批量 ZIP (${store.items.length})` }}
+          {{
+            exporting && progress.total > 0
+              ? `打包 ${progress.current}/${progress.total}…`
+              : `批量 ZIP (${itemCount})`
+          }}
         </button>
 
         <button
@@ -74,7 +132,12 @@ function setExportHost(el: unknown) {
           :disabled="exporting"
           @click="exportActive"
         >
-          <svg v-if="exporting && progress.total === 0" class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+          <svg
+            v-if="exporting && progress.total === 0"
+            class="h-3.5 w-3.5 animate-spin"
+            viewBox="0 0 24 24"
+            fill="none"
+          >
             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.3" stroke-width="3" />
             <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
           </svg>
@@ -83,6 +146,9 @@ function setExportHost(el: unknown) {
       </div>
     </header>
 
+    <!-- 工作台切换条 -->
+    <ModeSwitch />
+
     <div class="flex min-h-0 flex-1">
       <!-- 左侧表单面板（右缘手柄可拖拽调宽，最小 = 默认 320px） -->
       <div class="relative shrink-0">
@@ -90,15 +156,32 @@ function setExportHost(el: unknown) {
           :style="{ width: `${panelWidth}px` }"
           class="h-full space-y-6 overflow-y-auto border-r border-line-800 p-4"
         >
-          <ScreenshotList />
-          <ImageUploader />
-          <SizePicker />
-          <LayoutPicker />
-          <FramePicker />
-          <ThemePicker />
-          <BrandPanel />
-          <TextEditor />
-          <ProjectPanel />
+          <!-- ══ 创意素材工作台 ══ -->
+          <template v-if="isCreative">
+            <PlacementPicker />
+            <VariantList />
+            <CreativeImageUploader />
+            <BannerLayoutPicker />
+            <ThemePicker />
+            <BrandPanel />
+            <TextEditor />
+            <SafeAreaPanel />
+            <CompliancePanel />
+            <ProjectPanel />
+          </template>
+
+          <!-- ══ App 预览截图工作台 ══ -->
+          <template v-else>
+            <ScreenshotList />
+            <ImageUploader />
+            <SizePicker />
+            <LayoutPicker />
+            <FramePicker />
+            <ThemePicker />
+            <BrandPanel />
+            <TextEditor />
+            <ProjectPanel />
+          </template>
         </aside>
         <!-- 拖拽手柄：一半压在分隔线上，hover 高亮；双击恢复默认宽度 -->
         <div
@@ -112,14 +195,15 @@ function setExportHost(el: unknown) {
 
       <!-- 预览区 -->
       <main class="relative min-w-0 flex-1">
-        <PreviewStage />
+        <CreativeStage v-if="isCreative" />
+        <PreviewStage v-else />
 
         <!-- 拖拽遮罩 -->
         <div
           v-if="dragging"
           class="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-brand-400 bg-surface-950/70 backdrop-blur-sm"
         >
-          <p class="text-sm font-medium text-brand-300">松开以导入 App 截图</p>
+          <p class="text-sm font-medium text-brand-300">{{ dropHint }}</p>
         </div>
       </main>
     </div>
@@ -131,12 +215,23 @@ function setExportHost(el: unknown) {
       class="pointer-events-none fixed top-0 -left-[100000px] opacity-100"
     >
       <ScreenshotCanvas
-        v-if="exportJob"
-        :key="`${exportJob.item.id}-${exportJob.width}x${exportJob.height}`"
-        :item="exportJob.item"
-        :width="exportJob.width"
-        :height="exportJob.height"
+        v-if="screenshotJob"
+        :key="`${screenshotJob.item.id}-${screenshotJob.width}x${screenshotJob.height}`"
+        :item="screenshotJob.item"
+        :width="screenshotJob.width"
+        :height="screenshotJob.height"
         :brand="store.brand"
+      />
+      <!-- overlay 必须为 false：安全区叠加层绝不能进入导出成品 -->
+      <CreativeCanvas
+        v-else-if="creativeJob"
+        :key="`${creativeJob.item.id}-${creativeJob.width}x${creativeJob.height}`"
+        :item="creativeJob.item"
+        :width="creativeJob.width"
+        :height="creativeJob.height"
+        :safe="creativeJob.safe"
+        :brand="creative.brand"
+        :overlay="false"
       />
     </div>
   </div>

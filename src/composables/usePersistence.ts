@@ -1,30 +1,38 @@
 import { watch } from 'vue'
 
+import { useCreativeStore } from '@/stores/creative'
 import { useProjectStore } from '@/stores/project'
+import type { SharedAssetStore } from '@/types'
 import { deleteImage, getImage, putImage } from '@/utils/imageStore'
 
-const STORAGE_KEY = 'app-preview-studio.project.v1'
-
 /**
- * 项目持久化：
- * - 配置（名称 / 尺寸 / 方向 / 全部截图条目）→ localStorage（防抖 400ms）
- * - App 截图 dataURL → IndexedDB（localStorage 容量太小）
+ * 项目持久化（两种素材各一份，完全隔离）：
+ * - 配置（名称 / 尺寸 / 方向 / 条目）→ localStorage（防抖 400ms）
+ * - 图片 dataURL（条目图 + 品牌 logo）→ IndexedDB（localStorage 容量太小）
+ *
  * 启动时先同步恢复配置，再异步回填图片。
+ *
+ * 截图项目沿用原有 key `app-preview-studio.project.v1`，创意素材用独立的
+ * `app-preview-studio.creative.v1`，两者互不覆盖；条目 id 由 uid() 生成，
+ * 天然不会在 IndexedDB 里撞车。
  */
 export function usePersistence() {
-  const store = useProjectStore()
+  // 两个 store 都常驻：切换工作台时数据已就绪，切换是瞬时的
+  wireStore(useProjectStore(), '截图')
+  wireStore(useCreativeStore(), '创意素材')
+}
 
+/** 把一个素材 store 接到 localStorage + IndexedDB 上 */
+function wireStore(store: SharedAssetStore, label: string) {
   // 1. 恢复配置（同步，首帧前完成）
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(store.storageKey)
     if (raw) store.hydrate(JSON.parse(raw))
   } catch (e) {
-    console.warn('[persistence] 读取本地项目失败', e)
+    console.warn(`[persistence] 读取本地${label}项目失败`, e)
   }
 
   const savedImages = new Map<string, string | null>()
-  /** 品牌 logo 走独立的 IndexedDB key（项目级，不随条目） */
-  const BRAND_KEY = '__brand__'
   let savedBrandLogo: string | null = null
 
   // 2. 异步回填图片（含品牌 logo），并注册图片变更监听
@@ -35,7 +43,7 @@ export function usePersistence() {
     }
     store.items.forEach((i) => savedImages.set(i.id, i.image))
 
-    const brandLogo = await getImage(BRAND_KEY)
+    const brandLogo = await getImage(store.brandKey)
     if (brandLogo && !store.brand.logo) store.brand.logo = brandLogo
     savedBrandLogo = store.brand.logo
     watch(
@@ -43,8 +51,8 @@ export function usePersistence() {
       (logo) => {
         if (savedBrandLogo === logo) return
         savedBrandLogo = logo
-        if (logo) void putImage(BRAND_KEY, logo)
-        else void deleteImage(BRAND_KEY)
+        if (logo) void putImage(store.brandKey, logo)
+        else void deleteImage(store.brandKey)
       },
     )
 
@@ -72,9 +80,9 @@ export function usePersistence() {
   let timer: ReturnType<typeof setTimeout> | undefined
   function save() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(store.snapshot({ withImages: false })))
+      localStorage.setItem(store.storageKey, JSON.stringify(store.snapshot({ withImages: false })))
     } catch (e) {
-      console.warn('[persistence] 保存本地项目失败', e)
+      console.warn(`[persistence] 保存本地${label}项目失败`, e)
     }
   }
   watch(

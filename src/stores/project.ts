@@ -10,6 +10,10 @@ import type { BrandSpec, CanvasItem, Orientation, ScreenshotSize, TextSpec } fro
 
 export const MAX_ITEMS = 10
 
+export const STORAGE_KEY = 'app-preview-studio.project.v1'
+/** 品牌 logo 在 IndexedDB 中的 key（项目级，不随条目） */
+const BRAND_KEY = '__brand__'
+
 /** 项目快照（localStorage 配置 / 项目 JSON 共用结构） */
 export interface ProjectSnapshot {
   version: 1
@@ -267,6 +271,11 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  /** 供共享面板做本地化文案用 */
+  function itemLabel(index: number): string {
+    return `截图 ${index + 1}`
+  }
+
   return {
     projectName,
     sizeId,
@@ -291,5 +300,8 @@ export const useProjectStore = defineStore('project', () => {
     snapshot,
     hydrate,
     createItem,
+    itemLabel,
+    storageKey: STORAGE_KEY,
+    brandKey: BRAND_KEY,
   }
 })
