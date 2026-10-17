@@ -93,6 +93,7 @@ function remove() {
         type="button"
         class="rounded-md bg-surface-700 py-1.5 text-[11px] text-ink-200 transition hover:bg-surface-600 disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="!canRemove"
+        :title="canRemove ? '移除当前截图' : '项目至少保留一条：先「＋ 新增」再删这一条'"
         @click="remove"
       >
         🗑 删除

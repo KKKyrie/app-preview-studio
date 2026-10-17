@@ -12,6 +12,7 @@
  *   8. 安全区叠加层：渲染位置与画布几何零偏差，且**绝不进入导出**
  *   9. 导出当前尺寸 / 一键全部尺寸：尺寸、比例、无 alpha、ZIP 条目名
  *  10. 持久化与隔离：刷新恢复；三份项目 JSON 互不串味
+ *  11. 删除出口：唯一一张也能删、删空是合法状态（空画框 + 空状态 + 导出置灰）
  *
  * 用法：node scripts/verify-crop.mjs
  * 依赖：本机 Chrome + 运行中的 dev server（默认 localhost:5173，端口被占用时
@@ -586,6 +587,69 @@ try {
     await text('[data-size-badge]'),
   )
   check('创意素材项目 JSON 未被裁剪工作台污染', !(await page.evaluate((k) => localStorage.getItem(k) ?? '', CREATIVE_KEY)).includes('crop'))
+
+  /* ── 17. 删除出口：唯一一张也能删，删空是合法状态 ── */
+  await clickBy('[data-mode-btn="crop"]')
+  await new Promise((r) => setTimeout(r, 400))
+
+  // 先直接调 store 删到只剩一张（等价于连点 11 次，省点时间）
+  await page.evaluate(() => {
+    const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('crop')
+    s.items.slice(1).forEach((i) => s.removeItem(i.id))
+  })
+  await new Promise((r) => setTimeout(r, 300))
+  check(
+    '只剩一张时「删除」按钮可用（旧版要求 length > 1，唯一一张图删不掉）',
+    !(await page.evaluate(() => document.querySelector('aside [data-crop-remove]').disabled)),
+  )
+
+  // 走真实的点击路径删掉最后一张
+  await clickBy('aside [data-crop-remove]')
+  await new Promise((r) => setTimeout(r, 300))
+  const emptied = await page.evaluate(() => {
+    const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('crop')
+    const r = document.querySelector('main [data-canvas]')?.getBoundingClientRect()
+    return {
+      items: s.items.length,
+      activeId: s.activeItemId,
+      activeNone: s.activeItem == null,
+      stageHint: (document.querySelector('main')?.innerText ?? '').includes('把成品图拖进来'),
+      panelEmpty: !!document.querySelector('aside [data-crop-empty]'),
+      canvasW: r ? Math.round(r.width) : 0,
+      removeOff: document.querySelector('aside [data-crop-remove]').disabled,
+      exportOff:
+        document.querySelector('[data-export-active]').disabled &&
+        document.querySelector('[data-export-all]').disabled,
+    }
+  })
+  check('**唯一一张也能删掉**，列表可以清空', emptied.items === 0, `items=${emptied.items}`)
+  check(
+    '删空后 activeItem 不再指向已删除的条目',
+    emptied.activeNone && emptied.activeId === '',
+    `activeItemId="${emptied.activeId}"`,
+  )
+  check('删空后画布仍渲染空画框（预览不塌）', emptied.canvasW > 0, `canvasW=${emptied.canvasW}`)
+  check('删空后画布给出导入引导', emptied.stageHint)
+  check('删空后列表显示空状态', emptied.panelEmpty)
+  check('删空后「删除」按钮置灰（没有可删的了）', emptied.removeOff)
+  check('删空后两个导出按钮都置灰（点了没反应 = 不该能点）', emptied.exportOff)
+
+  await page.reload({ waitUntil: 'networkidle0' })
+  await new Promise((r) => setTimeout(r, 900))
+  const afterEmptyReload = await cropState()
+  check(
+    '**删空状态被持久化**（防抖窗口内刷新也不丢）',
+    afterEmptyReload.items === 0,
+    `items=${afterEmptyReload.items}`,
+  )
+
+  await importImage(2400, 1600, 'again.png')
+  const recovered = await cropState()
+  check(
+    '删空后仍能导入（导入路径不依赖已有条目）',
+    recovered.items === 1 && recovered.filled === 1 && recovered.zoom === 1,
+    `items=${recovered.items} filled=${recovered.filled} zoom=${recovered.zoom}`,
+  )
 
   check('页面无错误', pageErrors.length === 0, pageErrors.join(' | '))
 } finally {

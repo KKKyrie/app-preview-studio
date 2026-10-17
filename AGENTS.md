@@ -33,7 +33,7 @@ APP_URL=http://localhost:5175/ npm run verify:creative
 
 - 临时下载目录由 `mkdtemp` 创建、结束时自清；`KEEP=1` 保留产物供排查
 - 失败时置 `process.exitCode = 1`
-- `verify:creative`（55 项）动创意素材后必跑；`verify:crop`（59 项）动裁剪后必跑
+- `verify:creative`（55 项）动创意素材后必跑；`verify:crop`（69 项）动裁剪后必跑
 - **断言要挑「跑不了假的」**：`verify:crop` 会解码导出的 PNG 逐点比色（源图用纯色），量出「成品里有多少像素不是源图颜色」。裁剪图片被外部 CSS 截断那条 bug 只有这种断言抓得到 —— 画布 box、DOM 宽高、比例全都正常。
 
 ## 架构
@@ -125,6 +125,8 @@ APP_URL=http://localhost:5175/ npm run verify:creative
 
 导入统一走 `composables/useCropImport.ts` 的 `importFiles()`（点击 / 拖拽 / 粘贴三条路径共用，空位优先 + 上限 12）。
 
+**列表允许删到 0 条**（0 条是合法状态：画布画空画框 + 空状态提示，导入入口照旧可用）。另外两个工作台仍要求 ≥1，理由不同且正当：它们的 `activeItem` 是**所有设计面板的操作对象**（主题 / 文案 / 版式 / 机型都以当前条目为宿主），0 条时整套面板没有目标、只能全部禁用，比置灰一个删除按钮更糟。这条约束必须写在按钮的 `title` 上，不能只置灰不说。
+
 ### 导出路径
 
 `App.vue` 底部有个 `fixed -left-[100000px]` 的隐藏容器，`useExport` 在其中按 1:1 渲染后 `domToPng`。`CreativeCanvas` 与 `CropCanvas` 在那里必须传 `overlay="false"` —— 安全区叠加层绝不能进导出成品。
@@ -142,6 +144,8 @@ APP_URL=http://localhost:5175/ npm run verify:creative
 - **验证脚本取产物必须按 mtime**（`latestPng()` / `latestFile()`），不能按文件名排序——文件名含比例（`21x9` / `16x9` / `3x2`）与像素尺寸，字典序与时间顺序无关。
 - **验证脚本往 store 里塞假数据必须塞「能真正解码」的**。为填满条目数而 `importImage('data:image/png;base64,x', …)` 会引发 `ERR_INVALID_URL`，把「页面无错误」那条断言污染成假失败——用 canvas 现画一个 4×4 的合法 dataURL。
 - **「用户看不到反馈」按 bug 处理**：上传主体图后画布毫无变化，根因是默认版式不绘制图片而无人告知。版式意图合法要保留，但交互必须补出口——上传后自动换版式、画布上给一键切换、版式卡片标注「用图 / 纯排版」（`docs` §14）。同类信号：任何「操作成功但界面无变化」的路径都要检查（`slack = 0` 的滑杆也属于此类，见 `docs` §15）。
+- **置灰的按钮必须说明为什么，且理由本身要经得起推敲**。裁剪工作台曾以「列表为空时无处可拖入图片」为由拦住删除（`length > 1`），后果是**唯一一张图删不掉**——按钮置灰、没有任何解释，用户只能判定为 bug。这个理由不成立：拖拽 / 粘贴是 window 级监听，面板也一直有导入按钮（`docs` §18）。同批修掉的还有：`exportCropActive` 在没有图时直接 `return`，而导出按钮还能点（点了没反应）。
+- **配置写回有 400ms 防抖，所以 `wireStore` 在 `pagehide` / `visibilitychange(hidden)` 时必须把待写的配置立即落地**。否则「删掉一张图 → 立刻关标签页」会丢掉这次删除——破坏性操作丢了等于「删掉的图自己回来了」。移动端 Safari 杀后台只给 `visibilitychange`，两个事件都要接。
 
 ## 约定
 

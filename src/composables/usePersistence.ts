@@ -8,7 +8,7 @@ import { deleteImage, getImage, putImage } from '@/utils/imageStore'
 
 /**
  * 项目持久化（三个工作台各一份，完全隔离）：
- * - 配置（名称 / 尺寸 / 方向 / 条目）→ localStorage（防抖 400ms）
+ * - 配置（名称 / 尺寸 / 方向 / 条目）→ localStorage（防抖 400ms，页面隐藏 / 卸载时立即落地）
  * - 图片 dataURL（条目图 + 品牌 logo）→ IndexedDB（localStorage 容量太小）
  *
  * 启动时先同步恢复配置，再异步回填图片。
@@ -123,10 +123,29 @@ function wireStore(store: PersistableStore, label: string) {
     () => JSON.stringify(store.snapshot({ withImages: false })),
     () => {
       clearTimeout(timer)
-      timer = setTimeout(save, 400)
+      timer = setTimeout(() => {
+        timer = undefined
+        save()
+      }, 400)
     },
   )
 
   // 4. 迁移过的旧存档立刻回写（不等用户的下一次编辑）
   if (stale) save()
+
+  // 5. 页面隐藏 / 卸载时把待写的配置落地。
+  //    防抖窗口是 400ms，「删掉一张图 → 立刻关标签页」会丢掉这次删除 ——
+  //    删除是破坏性操作，丢了就等于「删掉的图自己回来了」。移动端 Safari
+  //    杀后台只给 visibilitychange，所以两个事件都要接。
+  function flush() {
+    if (timer === undefined) return
+    clearTimeout(timer)
+    timer = undefined
+    save()
+  }
+  function onVisibility() {
+    if (document.visibilityState === 'hidden') flush()
+  }
+  window.addEventListener('pagehide', flush)
+  document.addEventListener('visibilitychange', onVisibility)
 }

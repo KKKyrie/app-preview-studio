@@ -82,6 +82,7 @@ const canRemove = computed(() => store.items.length > 1)
         type="button"
         class="rounded-md bg-surface-700 py-1.5 text-[11px] text-ink-200 transition hover:bg-surface-600 disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="!canRemove"
+        :title="canRemove ? '移除当前变体' : '项目至少保留一条：先「＋ 新增」再删这一条'"
         @click="store.removeVariant(store.activeItemId)"
       >
         🗑 删除

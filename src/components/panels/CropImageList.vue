@@ -30,7 +30,8 @@ const innerStyle = computed(() => ({
 }))
 
 const filled = computed(() => store.items.filter((i) => i.image).length)
-const canRemove = computed(() => store.items.length > 1)
+/** 删到一条不剩是允许的（0 条是合法状态，见 store.removeItem） */
+const canRemove = computed(() => store.items.length > 0)
 const canAdd = computed(() => store.items.length < MAX_CROP_ITEMS)
 const notice = ref('')
 
@@ -46,7 +47,18 @@ async function onPick(e: Event) {
 
 <template>
   <PanelSection title="图片" :hint="`${filled} / ${MAX_CROP_ITEMS} 张`">
-    <div class="flex flex-col gap-1.5">
+    <div
+      v-if="!store.items.length"
+      data-crop-empty
+      class="rounded-md border border-dashed border-line-700 px-3 py-4 text-center"
+    >
+      <p class="text-[11px] text-ink-400">还没有图片</p>
+      <p class="mt-1 text-[10px] leading-relaxed text-ink-500">
+        用下面的「导入图片」，或直接把图拖进窗口 / ⌘V 粘贴
+      </p>
+    </div>
+
+    <div v-else class="flex flex-col gap-1.5">
       <button
         v-for="(it, i) in store.items"
         :key="it.id"
@@ -103,6 +115,7 @@ async function onPick(e: Event) {
         data-crop-remove
         class="rounded-md bg-surface-700 py-1.5 text-[11px] text-ink-200 transition hover:bg-surface-600 disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="!canRemove"
+        :title="canRemove ? '移除当前这张（列表可以删空）' : '列表已空'"
         @click="store.removeItem(store.activeItemId)"
       >
         🗑 删除

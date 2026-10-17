@@ -23,7 +23,8 @@ const NO_VIOLATIONS: SafeAreaViolation[] = []
  * - overlay=false 用于导出容器
  */
 const props = defineProps<{
-  item: CropItem
+  /** 当前条目；`undefined` = 列表已空（只画空画框，不画图） */
+  item?: CropItem
   width: number
   height: number
   /** 安全区（画布坐标系的像素矩形）；仅 overlay 时使用 */
@@ -32,15 +33,20 @@ const props = defineProps<{
   overlay?: boolean
 }>()
 
-/** 源图在画框坐标系里的绘制矩形；null = 还没导入图片 */
-const box = computed(() => resolveCropBox(props.width, props.height, props.item.width, props.item.height, {
-  zoom: props.item.zoom,
-  offset: props.item.offset,
-}))
-
-const hasImage = computed(
-  () => !!props.item.image && props.item.width > 0 && props.item.height > 0,
+/** 源图在画框坐标系里的绘制矩形；null = 还没导入图片（或列表为空） */
+const box = computed(() =>
+  props.item
+    ? resolveCropBox(props.width, props.height, props.item.width, props.item.height, {
+        zoom: props.item.zoom,
+        offset: props.item.offset,
+      })
+    : null,
 )
+
+const hasImage = computed(() => {
+  const it = props.item
+  return !!it?.image && it.width > 0 && it.height > 0
+})
 
 const rootStyle = computed(() => ({
   position: 'relative' as const,
@@ -100,8 +106,8 @@ const safeRect = computed<Rect>(
       data-role="image"
       data-crop-image
       draggable="false"
-      :src="item.image ?? undefined"
-      :alt="item.imageName ?? '待裁剪图片'"
+      :src="item?.image ?? undefined"
+      :alt="item?.imageName ?? '待裁剪图片'"
       :style="imageStyle"
     />
     <SafeAreaOverlay

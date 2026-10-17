@@ -223,14 +223,22 @@ export const useCropStore = defineStore('crop', () => {
     return true
   }
 
-  /** 移除条目；至少保留一个（列表为空时无处可拖入图片） */
+  /**
+   * 移除条目，**允许删到一条不剩**。
+   *
+   * 早先这里挡着 `length <= 1`，理由是「列表为空时无处可拖入图片」——
+   * 理由不成立：拖拽 / 粘贴是 window 级监听，面板的「导入图片」按钮也始终在，
+   * 空列表反而是最自然的初始状态。真实后果是**唯一一张图删不掉**：
+   * 按钮置灰、没有任何解释，用户只能判定为 bug。
+   *
+   * 0 条是合法状态：画布画空画框 + 空状态提示，面板给出导入入口。
+   */
   function removeItem(id: string): boolean {
-    if (items.value.length <= 1) return false
     const idx = items.value.findIndex((i) => i.id === id)
     if (idx < 0) return false
     items.value.splice(idx, 1)
     if (activeItemId.value === id) {
-      activeItemId.value = items.value[Math.min(idx, items.value.length - 1)].id
+      activeItemId.value = items.value[Math.min(idx, items.value.length - 1)]?.id ?? ''
     }
     return true
   }
@@ -321,7 +329,9 @@ export const useCropStore = defineStore('crop', () => {
   function hydrate(raw: unknown): boolean {
     try {
       const s = raw as Partial<CropSnapshot> | null
-      if (!s || !Array.isArray(s.items) || s.items.length === 0) return false
+      // 空列表是合法存档（用户把图删光了），必须原样恢复 —— 否则「删光后
+      // 刷新又冒出一张空位」，用户会以为删除没生效。
+      if (!s || !Array.isArray(s.items)) return false
       if (typeof s.projectName === 'string' && s.projectName) projectName.value = s.projectName
       placementId.value =
         typeof s.placementId === 'string' ? getPlacement(s.placementId).id : DEFAULT_PLACEMENT_ID
@@ -330,7 +340,7 @@ export const useCropStore = defineStore('crop', () => {
       activeItemId.value =
         typeof s.activeItemId === 'string' && items.value.some((i) => i.id === s.activeItemId)
           ? s.activeItemId
-          : items.value[0].id
+          : (items.value[0]?.id ?? '')
       return true
     } catch (e) {
       console.warn('[persistence] 恢复图片裁剪项目失败', e)

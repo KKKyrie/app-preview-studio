@@ -104,6 +104,15 @@ const exportBusyLabel = computed(() =>
 const exportActiveLabel = computed(() => (isCrop.value ? '导出当前尺寸' : '导出 PNG'))
 
 /**
+ * 裁剪工作台没有图时两个导出按钮必须置灰。
+ *
+ * `exportCropActive` / `exportCropAllSizes` 在 `!item?.image` 时直接 return，
+ * 按钮若还能点，用户看到的就是「点了没反应」——「操作成功但界面无变化」按 bug 处理。
+ * 另外两个工作台恒有至少一条，不受影响。
+ */
+const canExport = computed(() => !isCrop.value || !!crop.activeItem?.image)
+
+/**
  * 隐藏导出容器挂载的画布。
  * 先把 job 收敛成带判别字段的联合类型，模板里才能正确收窄 item 的具体类型。
  */
@@ -162,7 +171,7 @@ const cropJob = computed(() => {
           type="button"
           data-export-all
           class="rounded-md bg-surface-700 px-3 py-2 text-xs font-medium text-ink-200 transition hover:bg-surface-600 disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="exporting"
+          :disabled="exporting || !canExport"
           @click="exportAll"
         >
           {{ exporting && progress.total > 0 ? exportBusyLabel : exportAllLabel }}
@@ -172,7 +181,7 @@ const cropJob = computed(() => {
           type="button"
           data-export-active
           class="flex items-center gap-2 rounded-md bg-brand-500 px-4 py-2 text-xs font-medium text-white transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="exporting"
+          :disabled="exporting || !canExport"
           @click="exportActive"
         >
           <svg
