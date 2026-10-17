@@ -69,6 +69,8 @@ try {
 
   // 先回到默认状态（防止上次运行/验证残留影响 UI 截图）
   await page.evaluate(() => {
+    // 工作台模式是全局状态：上次若停在创意素材 / 图片裁剪，界面图就拍错了
+    window.__studio.setMode('screenshot')
     const store = window.__studio.store
     store.setTheme('minimal-white')
     store.patchText('headline', { font: 'system', weight: 800 })
@@ -152,6 +154,7 @@ try {
 
   /* 4. 恢复默认状态并清理（顺序：先改状态 → 等持久化 debounce → 再删 key） */
   await page.evaluate(() => {
+    window.__studio.setMode('screenshot')
     const store = window.__studio.store
     store.setTheme('minimal-white')
     store.patchText('headline', { font: 'system', weight: 800 })

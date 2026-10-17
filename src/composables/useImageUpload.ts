@@ -1,52 +1,69 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
+import { useCropImport } from '@/composables/useCropImport'
 import { useCreativeStore } from '@/stores/creative'
+import { useCropStore } from '@/stores/crop'
 import { mode } from '@/stores/mode'
 import { useProjectStore } from '@/stores/project'
+import { readFileAsDataUrl } from '@/utils/imageFile'
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('读取文件失败'))
-    reader.readAsDataURL(file)
-  })
-}
-
-function pickImageFile(transfer: DataTransfer | null): File | null {
-  if (!transfer) return null
+/**
+ * 取出拖拽 / 粘贴里的图片文件。
+ *
+ * 返回**全部**而不是第一个：裁剪工作台是一次处理一批成品的，丢掉其余文件
+ * 就等于让用户逐个再拖一次。
+ */
+function pickImageFiles(transfer: DataTransfer | null): File[] {
+  if (!transfer) return []
+  const out: File[] = []
   for (const item of Array.from(transfer.items)) {
     if (item.kind === 'file' && item.type.startsWith('image/')) {
       const file = item.getAsFile()
-      if (file) return file
+      if (file) out.push(file)
     }
   }
-  return transfer.files[0]?.type.startsWith('image/') ? transfer.files[0] : null
+  if (out.length) return out
+  return Array.from(transfer.files).filter((f) => f.type.startsWith('image/'))
 }
 
 /**
  * 图片上传：支持点击选择、拖拽、⌘V 粘贴（作用于整个窗口）。
+ *
+ * 三个工作台的落点完全不同，因此分发必须集中在这里：
+ *   截图     → 替换当前截图的图（patchActive）
+ *   创意素材 → store.setImage（当前版式不画图时会自动换版式，见 store 注释）
+ *   图片裁剪 → 追加为新条目（空位优先），支持一次多张
  */
 export function useImageUpload() {
   const store = useProjectStore()
   const creative = useCreativeStore()
+  const crop = useCropStore()
+  const { importFiles } = useCropImport()
   const dragging = ref(false)
   let dragDepth = 0
 
-  async function applyFile(file: File | null) {
-    if (!file) return
+  async function applyFiles(files: File[]) {
+    if (!files.length) return
+    if (mode.value === 'crop') {
+      await importFiles(files)
+      return
+    }
+    const file = files[0]
     const dataUrl = await readFileAsDataUrl(file)
-    // 拖拽 / 粘贴按当前工作台落到对应素材上。
-    // 创意素材走 store.setImage：当前版式不绘制主体图时会自动换版式（见 store 注释）
     if (mode.value === 'creative') creative.setImage(dataUrl, file.name)
     else store.patchActive({ image: dataUrl, imageName: file.name })
   }
 
+  async function applyFile(file: File | null) {
+    if (!file) return applyFiles([])
+    await applyFiles([file])
+  }
+
   function onPaste(e: ClipboardEvent) {
-    const file = pickImageFile(e.clipboardData)
-    if (file) {
+    const files = pickImageFiles(e.clipboardData)
+    if (files.length) {
       e.preventDefault()
-      void applyFile(file)
+      void applyFiles(files)
     }
   }
 
@@ -70,11 +87,12 @@ export function useImageUpload() {
     e.preventDefault()
     dragDepth = 0
     dragging.value = false
-    void applyFile(pickImageFile(e.dataTransfer))
+    void applyFiles(pickImageFiles(e.dataTransfer))
   }
 
   function clearImage() {
-    if (mode.value === 'creative') creative.setImage(null, null)
+    if (mode.value === 'crop') crop.clearItem(crop.activeItemId)
+    else if (mode.value === 'creative') creative.setImage(null, null)
     else store.patchActive({ image: null, imageName: null })
   }
 
@@ -94,5 +112,5 @@ export function useImageUpload() {
     window.removeEventListener('drop', onDrop)
   })
 
-  return { dragging, applyFile, clearImage }
+  return { dragging, applyFile, applyFiles, clearImage }
 }

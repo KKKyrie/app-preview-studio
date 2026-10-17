@@ -2,12 +2,19 @@
 import { ref } from 'vue'
 
 import PanelSection from '@/components/ui/PanelSection.vue'
-import { useAssetStore } from '@/stores/assetStore'
-import { mode } from '@/stores/mode'
+import { useProjectPanelStore } from '@/stores/assetStore'
+import { mode, type WorkspaceMode } from '@/stores/mode'
 import { deleteImage } from '@/utils/imageStore'
 
-const store = useAssetStore()
+const store = useProjectPanelStore()
 const importEl = ref<HTMLInputElement | null>(null)
+
+/** 三个工作台的本地化称呼（清空数据的确认文案要用） */
+const WORKSPACE_LABEL: Record<WorkspaceMode, string> = {
+  screenshot: '截图',
+  creative: '创意素材',
+  crop: '图片裁剪',
+}
 
 function exportProject() {
   const snapshot = store.snapshot({ withImages: true })
@@ -34,13 +41,14 @@ async function importProject(e: Event) {
 }
 
 async function clearAll() {
-  const what = mode.value === 'creative' ? '创意素材' : '截图'
+  const what = WORKSPACE_LABEL[mode.value]
   if (!confirm(`确定清空本地保存的${what}项目与所有图片吗？此操作不可恢复。`)) return
   try {
-    // 只清当前工作台那一份，另一种素材不受影响
+    // 只清当前工作台那一份，另外两个工作台不受影响
     localStorage.removeItem(store.storageKey)
     for (const item of store.items) await deleteImage(item.id)
-    await deleteImage(store.brandKey)
+    // 图片裁剪没有品牌图片，brandKey 为 null
+    if (store.brandKey) await deleteImage(store.brandKey)
   } finally {
     location.reload()
   }
@@ -67,7 +75,7 @@ async function clearAll() {
       <input ref="importEl" type="file" accept=".json,application/json" class="hidden" @change="importProject" />
     </div>
     <p class="mt-2 text-[10px] leading-relaxed text-ink-500">
-      编辑内容自动保存；导出 JSON 可跨设备迁移项目（含截图）。
+      编辑内容自动保存；导出 JSON 可跨设备迁移项目（含图片）。
     </p>
     <button
       type="button"

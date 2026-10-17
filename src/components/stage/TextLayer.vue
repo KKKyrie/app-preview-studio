@@ -113,7 +113,8 @@ const brandNameStyle = computed(() => ({
   <div :style="boxStyleMain">
     <!-- 品牌行：logo + 名字，展示在主标题正上方 -->
     <div v-if="hasBrand" :style="brandRowStyle" data-role="brand">
-      <img v-if="brand!.logo" :src="brand!.logo" alt="" :style="brandLogoStyle" />
+      <!-- draggable="false"：同 CreativeCanvas，避免拖拽触发窗口级导入 -->
+      <img v-if="brand!.logo" :src="brand!.logo" alt="" draggable="false" :style="brandLogoStyle" />
       <span v-if="brand!.name.trim()" :style="brandNameStyle">{{ brand!.name }}</span>
     </div>
 

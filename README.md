@@ -8,8 +8,9 @@
 
 纯前端 · 打开即用 · 数据只保存在你的浏览器
 
-> 🆕 **新增「创意素材」工作台**：iOS 27 起 App Store 支持的**标题图**与**搜索结果图**素材，
-> 内置**安全区实测数据**与**合规检查**，导出前就能发现问题。详见 [设计文档](docs/creative-assets-design.md)。
+> 🆕 **新增「创意素材」与「图片裁剪」两个工作台**：
+> 创意素材覆盖 iOS 27 起 App Store 的**标题图**与**搜索结果图**，内置**安全区实测数据**与**合规检查**；
+> 图片裁剪把**已经画好的成品图**按官方比例裁开，一次导出全部尺寸。详见 [设计文档](docs/creative-assets-design.md)。
 
 <p>
   <img src="https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue 3.5">
@@ -70,7 +71,7 @@
 
 ### 🎨 创意素材（iOS 27 新坑位）
 
-顶栏下方的切换条在**「App 预览截图」**与**「创意素材」**两个工作台之间切换，两者数据与持久化完全隔离。
+顶栏下方的切换条在**「App 预览截图」/「创意素材」/「图片裁剪」**三个工作台之间切换，三者数据与持久化完全隔离。
 
 | 坑位 | 比例 | 导出尺寸 |
 | :-- | :-- | :-- |
@@ -80,7 +81,7 @@
 | **搜索结果图** Search Results | 16:9 | **5244 × 2950**（仅 PNG） |
 
 去重后共 **5 个尺寸选项**——其中 **5244 × 2950 两个坑位共用**，一份文件可同时填两处
-（对应 App Store Connect 的「Use header asset in search results」）。
+（对应 App Store Connect 的「Use header asset in search results」）。**图片裁剪**工作台复用同一张表。
 
 - **安全区实测内置** —— Apple 从不公布安全区像素值，本工具的数值由**解析 Apple 官方 Sketch 模板**得到（3840×1646 → 1646×661；3840×2560 → 2168×1030；5244×2950 → 1402×962，均经对称性校验）
 - **排版密度跨尺寸一致** —— 字号以**安全区宽度**为基准，因此五个尺寸下每行能放的字数完全相同；面板的 px 读数即真实渲染值
@@ -89,6 +90,16 @@
 - **4 种横幅版式**（居中主张 / 左文右图 / 上文下图 / 满幅图底），几何**以安全区为基准**，因此版式本身不会越界；「上文下图」会实测文案高度自动避开图文重叠；每个版式都标注了**用图 / 纯排版**，选版式时就能看出它会不会展示主体图
 - **变体组**最多 12 个 —— 呼应 Asset Library：预先备好多套（如夏季版 / 冬季版），审核通过后上线直接替换，无需提交新版本
 - 主体图**可选**：Apple 允许纯品牌 / 纯排版素材，不上传图片同样合规。上传时若当前版式不展示主体图，会自动切到会展示它的版式，并在画布上给出提示与一键切换
+
+### ✂️ 图片裁剪
+
+**已经有成品图、只是需要按官方比例裁开**时用这个工作台 —— 它不产出设计，只做裁剪，因此面板里没有主题 / 文案 / 品牌，也没有任何诱导你改这些的入口。
+
+- **画框锁定官方比例，图片可拖拽 / 缩放** —— 画框随坑位与尺寸切换（21:9 / 16:9 / 3:2），源图在框内拖动构图、滚轮缩放；`⌘/Ctrl + 滚轮`才是缩放预览，两层缩放互不干扰
+- **构图存相对量，切尺寸自动按比例保留** —— `zoom` 是「相对刚好铺满的倍数」、`offset` 归一化到多余空间。在 21:9 上「看右边」，切到 3:2 仍然是「看右边」，不需要重裁四遍
+- **一键全部尺寸** —— 按每个画框的比例**分别重排**同一份构图，一次产出 4 个合法文件（ZIP），每张都已剥离 alpha 通道
+- **画质告警** —— 实时量化「这张构图实际用到的源图像素够不够画框用」，会糊就直接说明会被放大多少倍。这是裁剪最隐蔽的失败模式：界面上看着完全正常，上传后才被判画质不合格
+- **批量导入**最多 12 张，每张各自记忆构图；安全区**仅作预览参考**（叠加层绝不进导出）
 
 ## 🚀 快速开始
 
@@ -142,7 +153,8 @@ npm run preview    # 预览构建产物
 | `npm run verify:workflow` | 批量 ZIP 导出 + 刷新后项目状态恢复 |
 | `npm run verify:fonts` | 字体选择 + 品牌 Logo / 名字（导出、刷新恢复、视觉产物） |
 | `npm run verify:panel` | 左侧面板拖拽调宽（默认 / 最小 320、双击复位、刷新保留） |
-| `npm run verify:creative` | 创意素材工作台：模式切换 / 坑位尺寸 / alpha / 安全区告警 / 合规命中 / 持久化隔离 |
+| `npm run verify:creative` | 创意素材工作台：模式切换 / 坑位尺寸 / alpha / 安全区告警 / 合规命中 / 持久化隔离（46 项） |
+| `npm run verify:crop` | 图片裁剪工作台：裁剪几何 / 双层缩放 / 夹紧 / 画质告警 / 一键全部尺寸 ZIP / 导出像素级无叠加层（59 项） |
 | `npm run capture:styles` | 6 布局 × 5 边框 × 10 主题 对比图 contact sheet |
 | `npm run docs:capture` | 重新生成本 README 的界面截图与主题样张（`docs/`） |
 
@@ -175,23 +187,30 @@ src/
   stores/
     project.ts              # 截图项目状态（独立 localStorage key）
     creative.ts             # 创意素材项目状态（独立 key，与截图互不覆盖）
-    mode.ts                 # 工作台模式
+    crop.ts                 # 图片裁剪项目状态（独立 key，无品牌 / 无文案）
+    mode.ts                 # 工作台模式（三档）
     assetStore.ts           # 共享面板用的 store 门面
   composables/
     useExport.ts            # 1:1 渲染导出 / 批量 ZIP / 字体内嵌 / alpha 剥离
-    usePersistence.ts       # localStorage + IndexedDB 自动保存（两种素材各一份）
+    usePersistence.ts       # localStorage + IndexedDB 自动保存（三个工作台各一份）
     useImageUpload.ts       # 拖拽 / 粘贴上传（按工作台分发）
+    useCropImport.ts        # 裁剪图片导入（点击 / 拖拽 / 粘贴三条路径共用）
+    useCropQuality.ts       # 裁剪画质徽章（画布与顶栏同一份文案）
     usePanelWidth.ts        # 左侧面板拖拽调宽（最小 = 默认 320px）
     useSafeArea.ts          # 安全区越界测量
     useAspectRatio.ts       # 主体图宽高比异步加载
+    useStageViewport.ts     # 预览缩放 / 平移（两个画布工作台共用）
+  utils/
+    cropGeometry.ts         # 裁剪几何：cover / 归一化偏移 / 夹紧（纯函数）
   assets/
     fonts.css               # 随包子集化字体 @font-face（得意黑 / 普惠体）
     fonts/                  # GB2312+ASCII 子集化 woff2（pyftsubset 生成）
   components/
-    ModeSwitch.vue          # 工作台切换条（含实时安全区 / 合规徽章）
+    ModeSwitch.vue          # 工作台切换条（含实时安全区 / 合规 / 画质徽章）
     stage/                  # 画布渲染（内部仅内联样式，保证导出一致）
       ScreenshotCanvas.vue  # 截图画布
       CreativeCanvas.vue    # 创意素材画布
+      CropCanvas.vue        # 裁剪画布（画框锁定比例，源图可平移缩放）
       SafeAreaOverlay.vue   # 安全区可视化（仅预览，不进导出）
     panels/                 # 左侧功能面板
     ui/                     # 面板基础组件

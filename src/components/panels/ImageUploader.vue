@@ -44,6 +44,7 @@ function clear() {
           <img
             :src="item.image"
             alt=""
+            draggable="false"
             class="h-10 w-auto max-w-16 rounded object-cover ring-1 ring-white/15"
           />
           <div class="min-w-0 flex-1">

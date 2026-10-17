@@ -2,12 +2,14 @@ import { domToPng } from 'modern-screenshot'
 import { nextTick, reactive, ref, shallowRef } from 'vue'
 import { zip } from 'fflate'
 
+import { allCanvasOptions } from '@/constants/placements'
 import { useCreativeStore } from '@/stores/creative'
+import { useCropStore } from '@/stores/crop'
 import { mode } from '@/stores/mode'
 import { useProjectStore } from '@/stores/project'
-import type { CanvasItem, CreativeItem, Rect } from '@/types'
+import type { CanvasItem, CreativeItem, CropItem, Rect } from '@/types'
 
-export type ExportKind = 'screenshot' | 'creative'
+export type ExportKind = 'screenshot' | 'creative' | 'crop'
 
 interface ExportJobBase {
   width: number
@@ -16,11 +18,12 @@ interface ExportJobBase {
 
 /**
  * 导出任务。用 `kind` 作为判别式，使 `item` 能随分支一起收窄
- * （否则模板里只能拿到 `CanvasItem | CreativeItem` 的联合类型）。
+ * （否则模板里只能拿到 `CanvasItem | CreativeItem | CropItem` 的联合类型）。
  */
 export type ExportJob =
   | (ExportJobBase & { kind: 'screenshot'; item: CanvasItem })
   | (ExportJobBase & { kind: 'creative'; item: CreativeItem; safe: Rect })
+  | (ExportJobBase & { kind: 'crop'; item: CropItem })
 
 /** 模块级单例状态：App.vue 中的隐藏导出容器与按钮共享 */
 const exporting = ref(false)
@@ -396,6 +399,7 @@ async function ensureFontsLoaded(usage: FontUsage): Promise<void> {
 export function useExport() {
   const store = useProjectStore()
   const creative = useCreativeStore()
+  const crop = useCropStore()
 
   /**
    * 在隐藏容器中按 1:1 原始像素渲染画布并截图。
@@ -441,10 +445,11 @@ export function useExport() {
     return { kind: 'screenshot' as const, item, width, height }
   }
 
-  /** 导出当前截图（单张 PNG） */
+  /** 导出当前条目（按当前工作台分发） */
   async function exportActive() {
     if (exporting.value) return
     if (mode.value === 'creative') return exportCreativeActive()
+    if (mode.value === 'crop') return exportCropActive()
     const item = store.activeItem
     if (!item) return
     exporting.value = true
@@ -554,9 +559,81 @@ export function useExport() {
     }
   }
 
+  /* ── 图片裁剪 ── */
+
+  /**
+   * 裁剪导出任务。
+   *
+   * 不需要 `safe`：裁剪画布的叠加层永远不进导出（App.vue 传 overlay=false），
+   * 而安全区叠加层是唯一需要它的东西。
+   */
+  function cropJob(item: CropItem, size: { width: number; height: number }) {
+    return { kind: 'crop' as const, item, width: size.width, height: size.height }
+  }
+
+  /** 导出当前画框尺寸（单张 PNG） */
+  async function exportCropActive() {
+    if (exporting.value) return
+    const item = crop.activeItem
+    if (!item?.image) return
+    exporting.value = true
+    try {
+      const { width, height } = crop.canvasSize
+      const base = sanitizeFilename(crop.projectName)
+      const both = crop.canvas.universal ? '_通用双坑位' : ''
+      const dataUrl = await renderJob(cropJob(item, crop.canvasSize))
+      downloadUrl(
+        dataUrl,
+        `${base}_${crop.canvas.aspect.replace(':', 'x')}${both}_${width}x${height}.png`,
+      )
+    } finally {
+      exporting.value = false
+    }
+  }
+
+  /**
+   * 一键全部尺寸（ZIP）。
+   *
+   * 同一份构图按每个画框的比例**分别重排**：zoom / offset 都是相对量，
+   * 因此在 21:9 上「看右边」的构图，切到 3:2 依然是「看右边」。这是必须的
+   * ——比例不同的画框若只渲染一个尺寸再拉伸，成品会被 Apple 直接拒收。
+   */
+  async function exportCropAllSizes() {
+    if (exporting.value) return
+    const item = crop.activeItem
+    if (!item?.image) return
+    const sizes = allCanvasOptions()
+    exporting.value = true
+    const base = sanitizeFilename(crop.projectName)
+    progress.total = sizes.length
+    progress.current = 0
+    try {
+      const files: Record<string, Uint8Array> = {}
+      for (const c of sizes) {
+        const dataUrl = await renderJob(cropJob(item, { width: c.width, height: c.height }))
+        const both = c.universal ? '_通用双坑位' : ''
+        files[`${base}_${c.aspect.replace(':', 'x')}${both}_${c.width}x${c.height}.png`] =
+          await dataUrlToBytes(dataUrl)
+        progress.current += 1
+        await new Promise((r) => setTimeout(r, 0))
+      }
+      const zipped = await zipAsync(files)
+      const blobUrl = URL.createObjectURL(
+        new Blob([zipped as unknown as BlobPart], { type: 'application/zip' }),
+      )
+      downloadUrl(blobUrl, `${base}_全部尺寸.zip`)
+    } finally {
+      exporting.value = false
+      progress.current = 0
+      progress.total = 0
+    }
+  }
+
   /** 批量导出：按当前工作台分发（顶栏按钮调用） */
   async function exportAll() {
-    return mode.value === 'creative' ? exportCreativeAll() : exportScreenshotAll()
+    if (mode.value === 'creative') return exportCreativeAll()
+    if (mode.value === 'crop') return exportCropAllSizes()
+    return exportScreenshotAll()
   }
 
   return {
@@ -566,9 +643,11 @@ export function useExport() {
     progress,
     /** 导出当前条目（按当前工作台分发） */
     exportActive,
-    /** 批量导出 ZIP（按当前工作台分发） */
+    /** 批量导出（按当前工作台分发） */
     exportAll,
     exportCreativeActive,
     exportCreativeAll,
+    exportCropActive,
+    exportCropAllSizes,
   }
 }

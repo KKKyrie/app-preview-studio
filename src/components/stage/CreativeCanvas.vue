@@ -207,10 +207,15 @@ const textPlacement = computed(() => ({
 
 <template>
   <div ref="rootEl" :style="rootStyle" data-canvas data-role-canvas>
+    <!--
+      draggable="false"：Chrome 默认允许拖拽 <img>，而窗口级 drop 处理器会把
+      拖出来的图片当成「从外部导入的文件」——在画布上拖主体图会凭空重新导入一次。
+    -->
     <img
       v-if="imageStyle"
       :src="item.image ?? undefined"
       alt=""
+      draggable="false"
       data-role="image"
       :style="imageStyle"
     />

@@ -2,6 +2,7 @@ import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 
 import App from './App.vue'
+import { setMode } from './stores/mode'
 import { useProjectStore } from './stores/project'
 import './assets/main.css'
 
@@ -31,5 +32,8 @@ app.mount('#app')
 if (import.meta.env.DEV) {
   ;(window as unknown as { __studio?: unknown }).__studio = {
     store: useProjectStore(pinia),
+    // 配图脚本要先把工作台切回截图模式：截图是全局状态，
+    // 若上次停在创意素材 / 图片裁剪，README 的界面图会是另一个工作台
+    setMode,
   }
 }

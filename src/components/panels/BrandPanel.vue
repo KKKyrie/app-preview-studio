@@ -102,6 +102,7 @@ function removeLogo() {
         <img
           :src="brand.logo"
           alt="logo 预览"
+          draggable="false"
           class="max-h-full max-w-full object-contain"
           :style="{ borderRadius: `${brand.logoRadius * 100}%` }"
         />

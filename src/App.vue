@@ -6,6 +6,8 @@ import BannerLayoutPicker from '@/components/panels/BannerLayoutPicker.vue'
 import BrandPanel from '@/components/panels/BrandPanel.vue'
 import CompliancePanel from '@/components/panels/CompliancePanel.vue'
 import CreativeImageUploader from '@/components/panels/CreativeImageUploader.vue'
+import CropImageList from '@/components/panels/CropImageList.vue'
+import CropPanel from '@/components/panels/CropPanel.vue'
 import FramePicker from '@/components/panels/FramePicker.vue'
 import ImageUploader from '@/components/panels/ImageUploader.vue'
 import LayoutPicker from '@/components/panels/LayoutPicker.vue'
@@ -18,19 +20,24 @@ import TextEditor from '@/components/panels/TextEditor.vue'
 import ThemePicker from '@/components/panels/ThemePicker.vue'
 import VariantList from '@/components/panels/VariantList.vue'
 import CreativeStage from '@/components/stage/CreativeStage.vue'
+import CropStage from '@/components/stage/CropStage.vue'
 import PreviewStage from '@/components/stage/PreviewStage.vue'
 import ScreenshotCanvas from '@/components/stage/ScreenshotCanvas.vue'
 import CreativeCanvas from '@/components/stage/CreativeCanvas.vue'
+import CropCanvas from '@/components/stage/CropCanvas.vue'
 import { useExport } from '@/composables/useExport'
 import { useImageUpload } from '@/composables/useImageUpload'
 import { usePanelWidth } from '@/composables/usePanelWidth'
 import { usePersistence } from '@/composables/usePersistence'
+import { allCanvasOptions } from '@/constants/placements'
 import { useCreativeStore } from '@/stores/creative'
+import { useCropStore } from '@/stores/crop'
 import { mode } from '@/stores/mode'
 import { useProjectStore } from '@/stores/project'
 
 const store = useProjectStore()
 const creative = useCreativeStore()
+const crop = useCropStore()
 const { dragging } = useImageUpload()
 const { exporting, exportJob, exportHostEl, progress, exportActive, exportAll } = useExport()
 const { panelWidth, startPanelDrag, resetPanelWidth } = usePanelWidth()
@@ -41,27 +48,60 @@ function setExportHost(el: unknown) {
 }
 
 const isCreative = computed(() => mode.value === 'creative')
+const isCrop = computed(() => mode.value === 'crop')
 
-/** 顶栏的尺寸徽章 + 项目名按工作台切换来源 */
+/** 顶栏需要的最小信息（三个 store 都结构化满足） */
+interface HeaderSource {
+  projectName: string
+  canvasSize: { width: number; height: number }
+  items: { id: string }[]
+}
+
+/** 顶栏的项目名 / 尺寸徽章按工作台切换来源 */
+const headerSource = computed<HeaderSource>(() => {
+  if (isCrop.value) return crop
+  return isCreative.value ? creative : store
+})
+
 const currentProjectName = computed({
-  get: () => (isCreative.value ? creative.projectName : store.projectName),
+  get: () => headerSource.value.projectName,
   set: (v: string) => {
-    if (isCreative.value) creative.projectName = v
-    else store.projectName = v
+    headerSource.value.projectName = v
   },
 })
 
 const sizeLabel = computed(() => {
-  const s = isCreative.value ? creative.canvasSize : store.canvasSize
+  const s = headerSource.value.canvasSize
   return `${s.width} × ${s.height}`
 })
 
-const itemCount = computed(() => (isCreative.value ? creative.items.length : store.items.length))
+/** 副标题与拖拽遮罩文案随工作台变化 */
+const tagline = computed(() => {
+  if (isCrop.value) return '成品图按官方比例裁剪'
+  return isCreative.value ? '创意素材生成器' : '应用商店预览图生成器'
+})
 
-/** 拖拽遮罩文案随工作台变化 */
-const dropHint = computed(() =>
-  isCreative.value ? '松开以导入主体图（可选）' : '松开以导入 App 截图',
+const dropHint = computed(() => {
+  if (isCrop.value) return '松开以导入成品图（可一次多张）'
+  return isCreative.value ? '松开以导入主体图（可选）' : '松开以导入 App 截图'
+})
+
+/**
+ * 顶栏两个按钮的文案。
+ *
+ * 裁剪工作台的「批量」含义完全不同：不是「很多个条目」，而是「同一个条目的
+ * 全部官方尺寸」。沿用「批量 ZIP (1)」会让人以为只会导出一张。
+ */
+const exportAllCount = computed(() =>
+  isCrop.value ? allCanvasOptions().length : headerSource.value.items.length,
 )
+const exportAllLabel = computed(() =>
+  isCrop.value ? `导出全部尺寸 (${exportAllCount.value})` : `批量 ZIP (${exportAllCount.value})`,
+)
+const exportBusyLabel = computed(() =>
+  isCrop.value ? `导出 ${progress.current}/${progress.total}…` : `打包 ${progress.current}/${progress.total}…`,
+)
+const exportActiveLabel = computed(() => (isCrop.value ? '导出当前尺寸' : '导出 PNG'))
 
 /**
  * 隐藏导出容器挂载的画布。
@@ -75,6 +115,11 @@ const screenshotJob = computed(() => {
 const creativeJob = computed(() => {
   const j = exportJob.value
   return j && j.kind === 'creative' ? j : null
+})
+
+const cropJob = computed(() => {
+  const j = exportJob.value
+  return j && j.kind === 'crop' ? j : null
 })
 </script>
 
@@ -92,7 +137,7 @@ const creativeJob = computed(() => {
         <div class="leading-tight">
           <div class="text-sm font-semibold tracking-wide">App Preview Studio</div>
           <div class="text-[10px] text-ink-500">
-            {{ isCreative ? '创意素材生成器' : '应用商店预览图生成器' }}
+            {{ tagline }}
           </div>
         </div>
       </div>
@@ -115,19 +160,17 @@ const creativeJob = computed(() => {
       <div class="flex items-center gap-2">
         <button
           type="button"
+          data-export-all
           class="rounded-md bg-surface-700 px-3 py-2 text-xs font-medium text-ink-200 transition hover:bg-surface-600 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="exporting"
           @click="exportAll"
         >
-          {{
-            exporting && progress.total > 0
-              ? `打包 ${progress.current}/${progress.total}…`
-              : `批量 ZIP (${itemCount})`
-          }}
+          {{ exporting && progress.total > 0 ? exportBusyLabel : exportAllLabel }}
         </button>
 
         <button
           type="button"
+          data-export-active
           class="flex items-center gap-2 rounded-md bg-brand-500 px-4 py-2 text-xs font-medium text-white transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="exporting"
           @click="exportActive"
@@ -141,7 +184,7 @@ const creativeJob = computed(() => {
             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.3" stroke-width="3" />
             <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
           </svg>
-          {{ exporting && progress.total === 0 ? '导出中…' : '导出 PNG' }}
+          {{ exporting && progress.total === 0 ? '导出中…' : exportActiveLabel }}
         </button>
       </div>
     </header>
@@ -156,8 +199,16 @@ const creativeJob = computed(() => {
           :style="{ width: `${panelWidth}px` }"
           class="h-full space-y-6 overflow-y-auto border-r border-line-800 p-4"
         >
+          <!-- ══ 图片裁剪工作台 ══ -->
+          <template v-if="isCrop">
+            <CropImageList />
+            <PlacementPicker />
+            <CropPanel />
+            <ProjectPanel />
+          </template>
+
           <!-- ══ 创意素材工作台 ══ -->
-          <template v-if="isCreative">
+          <template v-else-if="isCreative">
             <PlacementPicker />
             <VariantList />
             <CreativeImageUploader />
@@ -195,7 +246,8 @@ const creativeJob = computed(() => {
 
       <!-- 预览区 -->
       <main class="relative min-w-0 flex-1">
-        <CreativeStage v-if="isCreative" />
+        <CropStage v-if="isCrop" />
+        <CreativeStage v-else-if="isCreative" />
         <PreviewStage v-else />
 
         <!-- 拖拽遮罩 -->
@@ -231,6 +283,15 @@ const creativeJob = computed(() => {
         :height="creativeJob.height"
         :safe="creativeJob.safe"
         :brand="creative.brand"
+        :overlay="false"
+      />
+      <!-- 同理：overlay 必须为 false。裁剪成品只能是源图本身加裁切 -->
+      <CropCanvas
+        v-else-if="cropJob"
+        :key="`${cropJob.item.id}-${cropJob.width}x${cropJob.height}`"
+        :item="cropJob.item"
+        :width="cropJob.width"
+        :height="cropJob.height"
         :overlay="false"
       />
     </div>

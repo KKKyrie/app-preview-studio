@@ -112,6 +112,48 @@ export interface CreativeItem {
 }
 
 /**
+ * 图片裁剪条目：一张**已经画好的成品图** + 它的构图。
+ *
+ * 与截图 / 创意素材条目刻意不共用任何字段——本工作台不做设计，只做裁剪：
+ * 没有文案、主题、品牌，也不该诱导用户去改这些。
+ *
+ * 构图存**相对量**而不是像素（理由见 utils/cropGeometry.ts）：
+ *   zoom   = 相对「刚好铺满画框」的倍数，≥ 1
+ *   offset = 归一化到多余空间的比例，-1 贴左上 / 0 居中 / +1 贴右下
+ * 换尺寸时用户的构图意图得以保留，不需要重新调。
+ */
+export interface CropItem {
+  id: string
+  /** 源图 dataURL；null = 空位（等待导入） */
+  image: string | null
+  imageName: string | null
+  /** 源图像素宽高；0 = 还没导入 */
+  width: number
+  height: number
+  /** 相对「刚好铺满画框」的缩放倍数，≥ 1 */
+  zoom: number
+  /** 归一化偏移，两个轴各自 ∈ [-1, 1] */
+  offset: { x: number; y: number }
+}
+
+/**
+ * 「项目」面板依赖的最小能力。
+ *
+ * 三个工作台的 store 都满足它：截图 / 创意素材是完整的 `SharedAssetStore`
+ * （含品牌），图片裁剪没有品牌与文案，只实现这一层即可复用同一份项目面板。
+ */
+export interface ProjectStoreLike {
+  projectName: string
+  items: { id: string }[]
+  /** localStorage 持久化 key（三个工作台完全隔离） */
+  storageKey: string
+  /** 品牌 logo 在 IndexedDB 中的 key；无品牌的工作台为 null */
+  brandKey: string | null
+  snapshot(opts: { withImages: boolean }): unknown
+  hydrate(raw: unknown): boolean
+}
+
+/**
  * 两种素材（截图 / 创意素材）共用的条目字段子集。
  * 共享面板（主题 / 文案 / 品牌 / 素材 / 项目）只依赖这一层，
  * 因此同一份组件实现可以在两种工作台下复用。
@@ -127,8 +169,7 @@ export interface SharedAssetItem {
 }
 
 /** 共享面板依赖的 store 能力（两种 store 都结构化满足） */
-export interface SharedAssetStore {
-  projectName: string
+export interface SharedAssetStore extends ProjectStoreLike {
   brand: BrandSpec
   items: SharedAssetItem[]
   activeItem: SharedAssetItem
@@ -147,10 +188,6 @@ export interface SharedAssetStore {
   patchBrand(partial: Partial<BrandSpec>): void
   patchText(key: 'headline' | 'subtitle', partial: Partial<TextSpec>): void
   setTheme(id: string): void
-  snapshot(opts: { withImages: boolean }): unknown
-  hydrate(raw: unknown): boolean
-  /** localStorage 持久化 key（两种素材完全隔离） */
-  storageKey: string
   /** 品牌 logo 在 IndexedDB 中的 key */
   brandKey: string
   /** 文案字段的展示名，供合规检查使用 */

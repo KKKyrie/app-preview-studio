@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import { PLACEMENTS, type CanvasOption } from '@/constants/placements'
-import { useCreativeStore } from '@/stores/creative'
+import { usePlacementStore } from '@/stores/assetStore'
+import { mode } from '@/stores/mode'
 
 import PanelSection from '@/components/ui/PanelSection.vue'
 
-const store = useCreativeStore()
+const store = usePlacementStore()
+
+const isCrop = computed(() => mode.value === 'crop')
 
 /** 安全区占画布面积的比例——直观反映「这块画布有多难排」 */
 function areaRatio(c: CanvasOption): string {
@@ -18,7 +23,7 @@ function isCurrent(c: CanvasOption): boolean {
 </script>
 
 <template>
-  <PanelSection title="坑位与尺寸" hint="决定画布与安全区">
+  <PanelSection title="坑位与尺寸" :hint="isCrop ? '决定裁剪画框的比例' : '决定画布与安全区'">
     <div class="space-y-4">
       <div v-for="p in PLACEMENTS" :key="p.id">
         <!-- 坑位标题 -->
@@ -92,6 +97,10 @@ function isCurrent(c: CanvasOption): boolean {
       标题图与搜索结果图各有两种尺寸；其中 5244 × 2950 为两个坑位共用，
       在 App Store Connect 可勾选「Use header asset in search results」。
       安全区数值由本工具解析 Apple 官方 Sketch 模板实测得到（Apple 不公布像素值）。
+    </p>
+    <p v-if="isCrop" class="mt-2 text-[10px] leading-relaxed text-amber-400/80">
+      ⚠ 裁剪画框锁定为该尺寸的比例，源图在框内拖动 / 缩放——
+      不同比例的成品必须分别裁剪，不能一份通用。
     </p>
   </PanelSection>
 </template>
