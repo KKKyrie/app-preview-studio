@@ -36,8 +36,9 @@ export function useImageUpload() {
   async function applyFile(file: File | null) {
     if (!file) return
     const dataUrl = await readFileAsDataUrl(file)
-    // 拖拽 / 粘贴按当前工作台落到对应素材上
-    if (mode.value === 'creative') creative.patchActive({ image: dataUrl, imageName: file.name })
+    // 拖拽 / 粘贴按当前工作台落到对应素材上。
+    // 创意素材走 store.setImage：当前版式不绘制主体图时会自动换版式（见 store 注释）
+    if (mode.value === 'creative') creative.setImage(dataUrl, file.name)
     else store.patchActive({ image: dataUrl, imageName: file.name })
   }
 
@@ -73,7 +74,7 @@ export function useImageUpload() {
   }
 
   function clearImage() {
-    if (mode.value === 'creative') creative.patchActive({ image: null, imageName: null })
+    if (mode.value === 'creative') creative.setImage(null, null)
     else store.patchActive({ image: null, imageName: null })
   }
 

@@ -78,6 +78,15 @@ APP_URL=http://localhost:5175/ npm run verify:creative
 - `1:1` 档位对准**安全区**而非画布中心（安全区只占画布 26.7% 宽且垂直偏上 334px）
 - 平移量必须夹在内容边界内，否则画布会被拖丢
 
+### 横幅版式必须声明 `usesImage`
+
+`data/bannerLayouts.ts` 每个版式都要写 `usesImage: boolean`，**不能靠读 `resolve` 的结果推断** —— 面板要在「有图但版式不画图」时提前提示，那时没有可信的 ctx 可算。
+
+- 记忆点：`resolve` 里返回 `image: null` 的版式（默认的「居中主张」就是），`usesImage` 必须为 `false`
+- 上传主体图走 `stores/creative.ts` 的 **`setImage()`**，不要直接 `patchActive({ image })` —— 只有 `setImage` 会在当前版式不画图时自动换版式（否则上传后画布毫无变化，用户只能判定为 bug，`docs` §14）
+- 拖拽 / 粘贴与点击选择两条上传路径必须共用 `setImage()`，否则行为不一致
+- `verify:creative` 逐个版式交叉验证「标注 vs 实际渲染」，两个方向都锁着：既防「标了用图却不画」，也防「画了却标纯排版」
+
 ### 导出路径
 
 `App.vue` 底部有个 `fixed -left-[100000px]` 的隐藏容器，`useExport` 在其中按 1:1 渲染后 `domToPng`。`CreativeCanvas` 在那里必须传 `overlay="false"` —— 安全区叠加层绝不能进导出成品。
@@ -91,6 +100,7 @@ APP_URL=http://localhost:5175/ npm run verify:creative
 - **Sketch 文件的 group `frame` 字段不可信**（有复制残留的过期值）。解析 Apple 官方模板必须用父组 `x/y` + 组内**叶子矩形**的 `w/h`；读组 frame 会让 5244×2950 的安全区错成 1658×1060。
 - **`domToPng` 的 `font.cssText` 必须非空**，哪怕只填 `/* comment */`。传空串会 fallback 到库的「全量抓取 @font-face」分支，体积失控（MiSans 每字重 56 个 unicode-range 分片）。
 - **`verify-creative.mjs` 取产物必须按 mtime**（`latestPng()`），不能按文件名排序——文件名含比例（`21x9` / `16x9` / `3x2`），字典序与时间顺序无关。
+- **「用户看不到反馈」按 bug 处理**：上传主体图后画布毫无变化，根因是默认版式不绘制图片而无人告知。版式意图合法要保留，但交互必须补出口——上传后自动换版式、画布上给一键切换、版式卡片标注「用图 / 纯排版」（`docs` §14）。同类信号：任何「操作成功但界面无变化」的路径都要检查。
 
 ## 约定
 

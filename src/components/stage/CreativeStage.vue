@@ -8,6 +8,7 @@ import {
   safeAreaReport,
 } from '@/composables/useCreativeChecks'
 import { useStageViewport } from '@/composables/useStageViewport'
+import { firstImageLayout } from '@/data/bannerLayouts'
 import { useCreativeStore } from '@/stores/creative'
 
 import CreativeCanvas from './CreativeCanvas.vue'
@@ -56,6 +57,25 @@ const canvasStyle = computed(() => ({
 const panStyle = computed(() => ({
   transform: `translate(-50%, -50%) translate(${offset.value.x}px, ${offset.value.y}px)`,
 }))
+
+/**
+ * 主体图已上传、但当前版式不绘制它。
+ *
+ * 这是「上传后画布毫无变化」的直接原因，必须在用户正盯着的画布上给出口。
+ * 用户手动选回纯排版版式时提示会重新出现（切换版式即复位忽略状态）。
+ */
+const imageLayout = computed(() => firstImageLayout())
+const mismatchDismissed = ref(false)
+const showImageMismatch = computed(
+  () => !!store.activeItem?.image && !store.layoutUsesImage && !mismatchDismissed.value,
+)
+
+watch(
+  () => [store.activeItem?.bannerLayoutId, store.activeItem?.image],
+  () => {
+    mismatchDismissed.value = false
+  },
+)
 
 const sizeLabel = computed(() => {
   const { width, height } = store.canvasSize
@@ -182,9 +202,36 @@ watch(
       />
     </div>
 
+    <!-- 主体图 / 版式不匹配：这是「上传后画布毫无变化」的直接原因，必须能一键化解。
+         pointerdown.stop 阻止冒泡，避免点按钮时触发画布平移 -->
+    <div
+      v-if="showImageMismatch"
+      class="absolute top-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-amber-500/50 bg-surface-900/90 py-1 pr-1 pl-3.5 text-xs text-amber-200 backdrop-blur"
+      @pointerdown.stop
+    >
+      <span>主体图已上传，当前版式不展示它</span>
+      <button
+        type="button"
+        data-canvas-use-image
+        class="rounded-full bg-amber-500/20 px-2.5 py-1 font-medium text-amber-100 transition hover:bg-amber-500/35"
+        @click="store.setLayout(imageLayout.id)"
+      >
+        切到「{{ imageLayout.name }}」
+      </button>
+      <button
+        type="button"
+        data-canvas-dismiss
+        class="flex h-6 w-6 items-center justify-center rounded-full text-amber-200/70 transition hover:bg-white/10 hover:text-amber-100"
+        title="忽略提示"
+        @click="mismatchDismissed = true"
+      >
+        ✕
+      </button>
+    </div>
+
     <!-- 空状态引导：明确「这不是截图」。仅在「适应」档位显示，放大核对细节时不遮挡画布 -->
     <div
-      v-if="isFit"
+      v-if="isFit && !showImageMismatch"
       class="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 rounded-full border border-dashed border-brand-500/50 bg-surface-900/80 px-4 py-1.5 text-xs text-brand-300 backdrop-blur"
     >
       {{ store.placement.name }}：表达品牌与季节内容，不是 App 截图

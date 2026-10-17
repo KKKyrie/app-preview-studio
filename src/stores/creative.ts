@@ -10,7 +10,7 @@ import {
   type Placement,
   type PlacementId,
 } from '@/constants/placements'
-import { BANNER_LAYOUTS } from '@/data/bannerLayouts'
+import { BANNER_LAYOUTS, firstImageLayout, getBannerLayout } from '@/data/bannerLayouts'
 import { DEFAULT_FONT_ID, getFont } from '@/data/fonts'
 import { THEMES } from '@/data/themes'
 import type { BrandSpec, CreativeItem, ThemeTokens } from '@/types'
@@ -189,6 +189,28 @@ export const useCreativeStore = defineStore('creative', () => {
     Object.assign(item, partial)
   }
 
+  /** 当前版式是否会绘制主体图（供面板 / 画布提示使用） */
+  const layoutUsesImage = computed(() =>
+    getBannerLayout(activeItem.value?.bannerLayoutId ?? '').usesImage,
+  )
+
+  /**
+   * 设置主体图（上传 / 移除统一走这里，点击选择与拖拽粘贴共用）。
+   *
+   * 上传图片本身就是「我要看到它」的意图，因此不能只写进 store：若当前版式
+   * 不绘制主体图（默认的「居中主张」就是），上传后画布毫无变化，用户只能判定
+   * 为「上传失败」。这里在那种情况下**自动切到第一个会绘制主体图的版式**。
+   */
+  function setImage(image: string | null, imageName: string | null) {
+    const item = activeItem.value
+    if (!item) return
+    item.image = image
+    item.imageName = imageName
+    if (!image) return
+    if (getBannerLayout(item.bannerLayoutId).usesImage) return
+    setLayout(firstImageLayout().id)
+  }
+
   function patchText(key: 'headline' | 'subtitle', partial: Partial<CreativeItem['headline']>) {
     const item = activeItem.value
     if (!item) return
@@ -335,6 +357,7 @@ export const useCreativeStore = defineStore('creative', () => {
     items,
     activeItemId,
     activeItem,
+    layoutUsesImage,
     placement,
     canvas,
     canvasSize,
@@ -344,6 +367,7 @@ export const useCreativeStore = defineStore('creative', () => {
     checkImage,
     select,
     patchActive,
+    setImage,
     patchText,
     patchBrand,
     patchThemeOverrides,

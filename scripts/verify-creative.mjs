@@ -477,6 +477,117 @@ try {
     `偏移 ${Math.round(dragged.offsetX)},${Math.round(dragged.offsetY)} / 上限 ${Math.round(maxX)},${Math.round(maxY)}`,
   )
 
+  /* ── 8f. 主体图与版式：声明的「用图」必须真的画出图 ─────────────────────
+   * 用户直接撞到过：上传主体图后画布毫无变化。根因是默认版式「居中主张」的
+   * resolve 写死 image: null，而代码里没有任何地方声明这件事，也不提示换版式。
+   *
+   * 这里锁三层：
+   *   ① 版式卡片必须标注用不用图，且标注与真实渲染**一致**；
+   *   ② 上传后必须看得见图（不匹配时自动换版式）；
+   *   ③ 手动切回纯排版版式时，画布上必须给出可一键化解的提示。
+   */
+
+  /** 走真实上传路径：页内造图 → DataTransfer → 触发 change */
+  async function uploadSubjectImage() {
+    await page.evaluate(async () => {
+      const c = document.createElement('canvas')
+      c.width = 1200
+      c.height = 800
+      const x = c.getContext('2d')
+      x.fillStyle = '#ff5a3c'
+      x.fillRect(0, 0, 1200, 800)
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'))
+      const file = new File([blob], '主体图.png', { type: 'image/png' })
+      const inputs = [...document.querySelectorAll('aside input[type="file"]')]
+      const target =
+        inputs.find((i) => i.closest('section')?.textContent?.includes('主体图')) ?? inputs[0]
+      const dt = new DataTransfer()
+      dt.items.add(file)
+      target.files = dt.files
+      target.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await new Promise((r) => setTimeout(r, 1300))
+  }
+
+  const canvasHasImage = () =>
+    page.evaluate(() => !!document.querySelector('[data-canvas] [data-role="image"]'))
+  const activeLayout = () =>
+    page.evaluate(
+      () =>
+        document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('creative')
+          .activeItem.bannerLayoutId,
+    )
+
+  // 回到纯排版的默认版式再上传，才能复现用户遇到的情形
+  await clickBy('[data-layout="centered-claim"]')
+  await new Promise((r) => setTimeout(r, 400))
+  const beforeUpload = await activeLayout()
+  await uploadSubjectImage()
+
+  check(
+    '上传主体图后自动切到会展示它的版式（不再停在纯排版版式上）',
+    beforeUpload === 'centered-claim' && (await activeLayout()) !== 'centered-claim',
+    `${beforeUpload} → ${await activeLayout()}`,
+  )
+  check('上传后主体图立即出现在画布上', await canvasHasImage())
+
+  // ① 声明与真实渲染一致：逐个版式交叉验证
+  const layoutTags = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-layout]')].map((b) => {
+      const t = b.textContent.replace(/\s+/g, ' ').trim()
+      return { id: b.dataset.layout, declared: t.includes('用图'), labeled: /用图|纯排版/.test(t) }
+    }),
+  )
+  check(
+    '每个版式卡片都标注了是否使用主体图',
+    layoutTags.length > 1 && layoutTags.every((l) => l.labeled),
+    layoutTags.map((l) => `${l.id}:${l.declared ? '用图' : '纯排版'}`).join(' '),
+  )
+  check(
+    '至少有一个版式会使用主体图',
+    layoutTags.some((l) => l.declared),
+    `${layoutTags.filter((l) => l.declared).length} / ${layoutTags.length} 个`,
+  )
+
+  const mismatched = []
+  for (const l of layoutTags) {
+    await clickBy(`[data-layout="${l.id}"]`)
+    await new Promise((r) => setTimeout(r, 450))
+    if (l.declared !== (await canvasHasImage())) mismatched.push(l.id)
+  }
+  check(
+    '「用图 / 纯排版」标注与实际渲染一致',
+    mismatched.length === 0,
+    mismatched.length ? `不一致：${mismatched.join(', ')}` : `${layoutTags.length} 个版式全部一致`,
+  )
+
+  // ③ 手动切回纯排版版式 → 画布上必须给出出口
+  await clickBy('[data-layout="centered-claim"]')
+  await new Promise((r) => setTimeout(r, 600))
+  check(
+    '主体图与版式不匹配时，画布给出可一键化解的提示',
+    await page.evaluate(() => !!document.querySelector('[data-canvas-use-image]')),
+  )
+  await clickBy('[data-canvas-use-image]')
+  await new Promise((r) => setTimeout(r, 900))
+  check(
+    '点提示上的按钮后主体图立即出现',
+    (await activeLayout()) !== 'centered-claim' && (await canvasHasImage()),
+    await activeLayout(),
+  )
+
+  const uploaderStatus = await page.evaluate(() => {
+    const panel = [...document.querySelectorAll('aside section')].find((s) =>
+      s.textContent?.includes('主体图'),
+    )
+    return panel?.textContent?.replace(/\s+/g, ' ') ?? ''
+  })
+  check(
+    '上传面板说明了「当前版式与主体图的关系」',
+    uploaderStatus.includes('会展示主体图'),
+    /[✓⚠][^✓⚠]{0,24}/.exec(uploaderStatus)?.[0]?.trim() ?? uploaderStatus.slice(0, 40),
+  )
+
   /* ── 9. 持久化：刷新后恢复 ── */
   await page.reload({ waitUntil: 'networkidle0' })
   await new Promise((r) => setTimeout(r, 600))

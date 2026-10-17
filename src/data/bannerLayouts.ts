@@ -71,6 +71,16 @@ export interface BannerLayout {
   id: string
   name: string
   hint: string
+  /**
+   * 该版式是否绘制主体图。
+   *
+   * 必须**声明式**写出来，不能靠读 resolve 的结果推断：面板要在「用户传了图、
+   * 但当前版式不画图」时提前给出提示，而那时根本没有可信的 ctx 可算。
+   *
+   * 曾漏掉这个标记，导致默认版式「居中主张」下上传主体图后画布毫无变化、
+   * 也没有任何地方提示需要换版式 —— 用户会直接判定为 bug。
+   */
+  usesImage: boolean
   defaults: Record<string, number>
   fields: BannerField[]
   resolve(ctx: BannerCtx, p: Record<string, number>, radius: number): BannerLayoutResult
@@ -104,6 +114,8 @@ export const BANNER_LAYOUTS: BannerLayout[] = [
     id: 'centered-claim',
     name: '居中主张',
     hint: 'logo + 主标题 + 副标题居中于安全区，不放图片。最克制，符合 Apple 「单一清晰概念」的推荐。',
+    // 纯排版版式：即使已上传主体图也不绘制（上传时会自动切到下面的用图版式）
+    usesImage: false,
     defaults: { textWidth: 0.96, textY: 0.14 },
     fields: [
       { key: 'textWidth', label: '文案宽度', min: 0.55, max: 1, step: 0.01 },
@@ -119,6 +131,7 @@ export const BANNER_LAYOUTS: BannerLayout[] = [
     id: 'text-left',
     name: '左文右图',
     hint: '文案在安全区左侧，主体图在右侧并可向外出血。适合产品主视觉。',
+    usesImage: true,
     defaults: { textWidth: 0.44, textY: 0.24, imageScale: 1, bleed: 0.04 },
     fields: [
       { key: 'textWidth', label: '文案宽度', min: 0.3, max: 0.62, step: 0.01 },
@@ -156,6 +169,7 @@ export const BANNER_LAYOUTS: BannerLayout[] = [
     id: 'text-top',
     name: '上文下图',
     hint: '文案压在安全区上半，主体图占据下半并向下出血。图片会自动避开文案，不会重叠。',
+    usesImage: true,
     defaults: { textWidth: 0.86, textY: 0.02, imageTop: 0.52, imageScale: 0.62 },
     fields: [
       { key: 'textWidth', label: '文案宽度', min: 0.5, max: 1, step: 0.01 },
@@ -191,6 +205,7 @@ export const BANNER_LAYOUTS: BannerLayout[] = [
     id: 'full-bleed',
     name: '满幅图底',
     hint: '主体图铺满整张画布作背景，文案压在图上，自动叠加渐变遮罩保证文字可读。适合季节 / 氛围向表达。',
+    usesImage: true,
     defaults: { textWidth: 0.82, textY: 0.22, scrim: 0.55 },
     fields: [
       { key: 'textWidth', label: '文案宽度', min: 0.5, max: 1, step: 0.01 },
@@ -209,4 +224,14 @@ export const BANNER_LAYOUTS: BannerLayout[] = [
 
 export function getBannerLayout(id: string): BannerLayout {
   return BANNER_LAYOUTS.find((l) => l.id === id) ?? BANNER_LAYOUTS[0]
+}
+
+/**
+ * 第一个会绘制主体图的版式。
+ *
+ * 上传主体图时若当前版式不画图，自动切到它 —— 用户上传图片本身就是「我要看到
+ * 它」的意图，停留在纯排版版式上只会让人以为上传失败了。
+ */
+export function firstImageLayout(): BannerLayout {
+  return BANNER_LAYOUTS.find((l) => l.usesImage) ?? BANNER_LAYOUTS[0]
 }

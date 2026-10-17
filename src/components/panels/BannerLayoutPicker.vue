@@ -64,11 +64,22 @@ const layout = computed(
           </div>
         </div>
 
-        <div
-          class="text-xs font-medium"
-          :class="store.activeItem.bannerLayoutId === l.id ? 'text-ink-50' : 'text-ink-200'"
-        >
-          {{ l.name }}
+        <div class="flex items-center justify-between gap-2">
+          <span
+            class="text-xs font-medium"
+            :class="store.activeItem.bannerLayoutId === l.id ? 'text-ink-50' : 'text-ink-200'"
+          >
+            {{ l.name }}
+          </span>
+          <!-- 把「这个版式用不用主体图」摆在明面上：否则用户传了图却看不到，只会以为是 bug -->
+          <span
+            class="shrink-0 rounded px-1.5 py-0.5 text-[9px] leading-3"
+            :class="
+              l.usesImage ? 'bg-brand-500/20 text-brand-300' : 'bg-surface-700 text-ink-400'
+            "
+          >
+            {{ l.usesImage ? '用图' : '纯排版' }}
+          </span>
         </div>
       </button>
     </div>
