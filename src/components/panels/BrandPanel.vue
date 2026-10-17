@@ -11,7 +11,14 @@ import RangeField from '@/components/ui/RangeField.vue'
 const store = useAssetStore()
 const project = useProjectStore()
 const brand = computed(() => store.brand)
-const canvasW = computed(() => store.canvasSize.width)
+/**
+ * px 读数基准 = `designWidth`，不是画布宽度。
+ *
+ * logo 高度按**安全区宽度**渲染（标题图上 0.055 × 1646 ≈ 91px），
+ * 若读数用画布宽度就会显示成 0.055 × 3840 ≈ 211px —— 与画布实际渲染差 2.3 倍。
+ * 截图模式下 designWidth === 画布宽度，行为不变。
+ */
+const designW = computed(() => store.designWidth)
 
 /** 两种工作台的措辞不同：「每张截图」/「每个变体」 */
 const itemNoun = computed(() => (mode.value === 'creative' ? '变体' : '截图'))
@@ -118,7 +125,7 @@ function removeLogo() {
           :max="0.1"
           :step="0.002"
           :model-value="brand.logoSize"
-          :format="(v) => `${Math.round(v * canvasW)} px`"
+          :format="(v) => `${Math.round(v * designW)} px`"
           @update:model-value="(v) => store.patchBrand({ logoSize: v })"
         />
         <RangeField
@@ -127,7 +134,7 @@ function removeLogo() {
           :max="0.08"
           :step="0.001"
           :model-value="brand.nameSize"
-          :format="(v) => `${Math.round(v * canvasW)} px`"
+          :format="(v) => `${Math.round(v * designW)} px`"
           @update:model-value="(v) => store.patchBrand({ nameSize: v })"
         />
       </template>

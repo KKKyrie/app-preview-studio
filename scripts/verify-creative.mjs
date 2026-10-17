@@ -326,6 +326,157 @@ try {
     `每行字数: ${density.join(' / ')}`,
   )
 
+  /* ── 8c. 面板 px 读数 = 画布实际渲染值 ────────────────────────────────
+   * 读数基准若用画布宽度，创意素材下会比实际渲染值大 2.3 倍
+   * （标题图：0.08 × 3840 = 307px，而实际渲染是 0.08 × 1646 = 132px）。
+   * 用户会照着这个数字判断字号，错了就是误导。
+   */
+  // 先给副标题填上文案：留空时它不参与渲染，读数无从比对
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-text="subtitle"]')
+    if (!el) return
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+    set.call(el, '副标题读数校验')
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await new Promise((r) => setTimeout(r, 600))
+
+  const pxReadout = await page.evaluate(() => {
+    const labels = [...document.querySelectorAll('aside label')]
+    const picked = {}
+    for (const label of labels) {
+      const name = label.textContent?.replace(/\s+/g, '') ?? ''
+      const shown = label.querySelector('span.tabular-nums')?.textContent?.trim() ?? ''
+      if (name.startsWith('主标题字号')) picked.headline = shown
+      if (name.startsWith('副标题字号')) picked.subtitle = shown
+    }
+    const canvas = document.querySelector('main [data-canvas]')
+    const read = (role) => {
+      const el = canvas?.querySelector(`[data-role="${role}"]`)
+      return el ? Math.round(parseFloat(getComputedStyle(el).fontSize)) : 0
+    }
+    return { panel: picked, real: { headline: read('headline'), subtitle: read('subtitle') } }
+  })
+  for (const role of ['headline', 'subtitle']) {
+    check(
+      `面板「${role === 'headline' ? '主' : '副'}标题字号」读数 = 实际渲染值`,
+      pxReadout.panel[role] === `${pxReadout.real[role]} px`,
+      `面板 ${pxReadout.panel[role]} / 实际 ${pxReadout.real[role]}px`,
+    )
+  }
+
+  /* ── 8d. 预览视口：切尺寸后画布必须完整可见 ──────────────────────────
+   * 用户直接撞到过：缩放值只在宿主容器 resize 时重算，切到 5244×2950 后
+   * 仍沿用 1920×1280 的缩放，画布被撑到宿主的 2.5 倍，只能看到中间一小块。
+   * 因此这里逐个尺寸验证「画布完整落在宿主内」。
+   */
+  const VIEWPORT_KEYS = ['header:3840x1646', 'search:1920x1280', 'header:5244x2950']
+  const viewport = []
+  for (const key of VIEWPORT_KEYS) {
+    await clickBy(`[data-canvas-opt="${key}"]`)
+    await new Promise((r) => setTimeout(r, 500))
+    viewport.push(
+      await page.evaluate(() => {
+        const canvas = document.querySelector('main [data-canvas]')
+        const host = canvas?.parentElement?.parentElement?.parentElement?.parentElement
+        const m = /matrix\(([\d.]+)/.exec(getComputedStyle(canvas.parentElement).transform)
+        const s = m ? Number(m[1]) : 1
+        const cw = canvas.offsetWidth * s
+        const ch = canvas.offsetHeight * s
+        return cw <= host.clientWidth + 1.5 && ch <= host.clientHeight + 1.5
+      }),
+    )
+  }
+  check(
+    '切换尺寸后画布始终完整可见（缩放随尺寸重算）',
+    viewport.every(Boolean),
+    viewport.map((ok) => (ok ? '✅' : '❌')).join(' '),
+  )
+
+  /* ── 8e. 缩放与平移 ─────────────────────────────────────────────── */
+  const viewportState = () =>
+    page.evaluate(() => {
+      const canvas = document.querySelector('main [data-canvas]')
+      const host = canvas.parentElement.parentElement.parentElement.parentElement
+      const wrap = canvas.parentElement.parentElement.parentElement
+      const m = /matrix\(([\d.]+)/.exec(getComputedStyle(canvas.parentElement).transform)
+      const s = m ? Number(m[1]) : 1
+      // 包裹层是 translate(-50%,-50%) translate(ox,oy)，浏览器会把百分比解析进 matrix，
+      // 因此 ox = tx + 自身宽/2（比解析内联 style 字符串稳）
+      const ms = /matrix\(([^)]+)\)/.exec(getComputedStyle(wrap).transform)
+      const parts = ms ? ms[1].split(',').map(Number) : [1, 0, 0, 1, 0, 0]
+      return {
+        label: document.querySelector('[data-zoom-label]')?.textContent?.trim() ?? '',
+        contentW: canvas.offsetWidth * s,
+        contentH: canvas.offsetHeight * s,
+        hostW: host.clientWidth,
+        hostH: host.clientHeight,
+        offsetX: parts[4] + wrap.offsetWidth / 2,
+        offsetY: parts[5] + wrap.offsetHeight / 2,
+      }
+    })
+
+  await clickBy('[data-zoom-actual]')
+  await new Promise((r) => setTimeout(r, 300))
+  const actual = await viewportState()
+  check('「1:1」档位 = 100%', actual.label === '100%', actual.label)
+  check(
+    '100% 时画布按原始像素渲染（5244×2950）',
+    Math.round(actual.contentW) === 5244 && Math.round(actual.contentH) === 2950,
+    `${Math.round(actual.contentW)}×${Math.round(actual.contentH)}`,
+  )
+
+  const centering = await page.evaluate(() => {
+    const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('creative')
+    const wrap = document
+      .querySelector('main [data-canvas]')
+      .parentElement.parentElement.parentElement
+    const ms = /matrix\(([^)]+)\)/.exec(getComputedStyle(wrap).transform)
+    const parts = ms ? ms[1].split(',').map(Number) : [1, 0, 0, 1, 0, 0]
+    return {
+      expected: s.canvasSize.height / 2 - (s.safeArea.y + s.safeArea.height / 2),
+      got: parts[5] + wrap.offsetHeight / 2,
+    }
+  })
+  check(
+    '1:1 视口对准安全区（内容所在处），而非画布中心',
+    Math.abs(centering.got - centering.expected) < 2 && Math.abs(centering.got) > 100,
+    `偏移 Y ${Math.round(centering.got)} / 期望 ${Math.round(centering.expected)}`,
+  )
+
+  await clickBy('[data-zoom-fit]')
+  await new Promise((r) => setTimeout(r, 300))
+  const fitted = await viewportState()
+  check(
+    '「适应」回到完整可见',
+    fitted.contentW <= fitted.hostW + 1.5 && fitted.contentH <= fitted.hostH + 1.5,
+    `${Math.round(fitted.contentW)}×${Math.round(fitted.contentH)} / 宿主 ${fitted.hostW}×${fitted.hostH}`,
+  )
+
+  // 平移：缩到 1:1 后拖拽，偏移应跟随；狂拖应被夹在内容边界内
+  await clickBy('[data-zoom-actual]')
+  await new Promise((r) => setTimeout(r, 300))
+  const hostBox = await page.evaluate(() => {
+    const canvas = document.querySelector('main [data-canvas]')
+    const r = canvas.parentElement.parentElement.parentElement.parentElement.getBoundingClientRect()
+    return { x: r.x, y: r.y, w: r.width, h: r.height }
+  })
+  const cx = hostBox.x + hostBox.w / 2
+  const cy = hostBox.y + hostBox.h / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx + 5000, cy + 5000, { steps: 20 })
+  await page.mouse.up()
+  await new Promise((r) => setTimeout(r, 300))
+  const dragged = await viewportState()
+  const maxX = (dragged.contentW - dragged.hostW) / 2
+  const maxY = (dragged.contentH - dragged.hostH) / 2
+  check(
+    '拖拽可平移，且被夹在内容边界内（画布不会被拖丢）',
+    Math.abs(dragged.offsetX - maxX) < 2 && Math.abs(dragged.offsetY - maxY) < 2,
+    `偏移 ${Math.round(dragged.offsetX)},${Math.round(dragged.offsetY)} / 上限 ${Math.round(maxX)},${Math.round(maxY)}`,
+  )
+
   /* ── 9. 持久化：刷新后恢复 ── */
   await page.reload({ waitUntil: 'networkidle0' })
   await new Promise((r) => setTimeout(r, 600))

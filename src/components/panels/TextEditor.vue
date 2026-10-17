@@ -12,7 +12,14 @@ import RangeField from '@/components/ui/RangeField.vue'
 
 const store = useAssetStore()
 const item = computed(() => store.activeItem)
-const canvasW = computed(() => store.canvasSize.width)
+/**
+ * px 读数基准 = `designWidth`，不是画布宽度。
+ *
+ * 创意素材的字号按**安全区宽度**渲染（标题图上 0.08 × 1646 = 132px），
+ * 若读数用画布宽度就会显示成 0.08 × 3840 = 307px —— 与画布实际渲染差 2.3 倍。
+ * 截图模式下 designWidth === 画布宽度，行为不变。
+ */
+const designW = computed(() => store.designWidth)
 const tokens = computed(() =>
   item.value ? resolveTokens(item.value.themeId, item.value.themeOverrides) : null,
 )
@@ -103,7 +110,7 @@ function setFont(key: 'headline' | 'subtitle', fontId: string) {
           :max="0.12"
           :step="0.001"
           :model-value="item.headline.size"
-          :format="(v) => `${Math.round(v * canvasW)} px`"
+          :format="(v) => `${Math.round(v * designW)} px`"
           @update:model-value="(v) => update('headline', { size: v })"
         />
         <ColorField
@@ -169,7 +176,7 @@ function setFont(key: 'headline' | 'subtitle', fontId: string) {
           :max="0.06"
           :step="0.001"
           :model-value="item.subtitle.size"
-          :format="(v) => `${Math.round(v * canvasW)} px`"
+          :format="(v) => `${Math.round(v * designW)} px`"
           @update:model-value="(v) => update('subtitle', { size: v })"
         />
         <ColorField

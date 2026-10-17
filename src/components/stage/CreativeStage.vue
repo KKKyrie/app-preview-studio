@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { checkSafeArea, type CheckableRole } from '@/composables/useSafeArea'
 import {
@@ -7,38 +7,37 @@ import {
   publishSafeAreaReport,
   safeAreaReport,
 } from '@/composables/useCreativeChecks'
+import { useStageViewport } from '@/composables/useStageViewport'
 import { useCreativeStore } from '@/stores/creative'
 
 import CreativeCanvas from './CreativeCanvas.vue'
+import StageZoomBar from './StageZoomBar.vue'
 
 const store = useCreativeStore()
 
 const hostEl = ref<HTMLElement | null>(null)
 const canvasWrapEl = ref<HTMLElement | null>(null)
 
-const PAD = 56
-const scale = ref(0.2)
+/** 缩放 / 平移：画布尺寸变化时自动回到「适应窗口」，见 useStageViewport */
+const {
+  scale,
+  offset,
+  canPan,
+  panning,
+  isFit,
+  atMinZoom,
+  atMaxZoom,
+  zoomIn,
+  zoomOut,
+  zoomFit,
+  zoomActual,
+  onWheel,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+} = useStageViewport(hostEl, () => store.canvasSize)
 
-function fit() {
-  const el = hostEl.value
-  if (!el) return
-  const { width, height } = store.canvasSize
-  const availW = el.clientWidth - PAD * 2
-  const availH = el.clientHeight - PAD * 2
-  if (availW <= 0 || availH <= 0) return
-  scale.value = Math.min(availW / width, availH / height, 1)
-}
-
-let ro: ResizeObserver | null = null
-
-onMounted(() => {
-  fit()
-  ro = new ResizeObserver(fit)
-  if (hostEl.value) ro.observe(hostEl.value)
-  void measure()
-})
-
-onBeforeUnmount(() => ro?.disconnect())
+onMounted(() => void measure())
 
 const boxStyle = computed(() => {
   const { width, height } = store.canvasSize
@@ -51,6 +50,11 @@ const boxStyle = computed(() => {
 const canvasStyle = computed(() => ({
   transform: `scale(${scale.value})`,
   transformOrigin: 'top left',
+}))
+
+/** 居中 + 平移：用 translate(-50%,-50%) 而不是 flex 居中，避免内容超出时首尾被裁掉 */
+const panStyle = computed(() => ({
+  transform: `translate(-50%, -50%) translate(${offset.value.x}px, ${offset.value.y}px)`,
 }))
 
 const sizeLabel = computed(() => {
@@ -122,10 +126,16 @@ watch(
 <template>
   <div
     ref="hostEl"
-    class="relative h-full w-full overflow-hidden"
+    class="relative h-full w-full touch-none overflow-hidden"
+    :class="canPan ? (panning ? 'cursor-grabbing' : 'cursor-grab') : ''"
     style="background-image: radial-gradient(circle, #23252f 1px, transparent 1px); background-size: 24px 24px"
+    @wheel="onWheel"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerUp"
   >
-    <div class="flex h-full w-full items-center justify-center">
+    <div class="absolute top-1/2 left-1/2" :style="panStyle">
       <div
         :style="boxStyle"
         class="relative overflow-hidden ring-1 ring-white/10"
@@ -149,24 +159,39 @@ watch(
 
     <!-- 底部信息条 -->
     <div
-      class="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full border border-line-700 bg-surface-900/90 px-4 py-1.5 text-xs text-ink-300 backdrop-blur"
+      class="pointer-events-none absolute bottom-4 left-4 flex items-center gap-2.5 rounded-full border border-line-700 bg-surface-900/90 px-4 py-1.5 text-xs text-ink-300 backdrop-blur"
     >
       <span class="font-medium text-ink-100">{{ sizeLabel }}</span>
       <span class="text-ink-500">·</span>
       <span>{{ placementLabel }}</span>
-      <span class="text-ink-500">·</span>
-      <span>{{ Math.round(scale * 100) }}%</span>
+      <span v-if="canPan" class="text-ink-500">·</span>
+      <span v-if="canPan" class="text-ink-400">拖拽可平移</span>
     </div>
 
-    <!-- 空状态引导：明确「这不是截图」 -->
+    <!-- 缩放控件 -->
+    <div class="absolute right-4 bottom-4">
+      <StageZoomBar
+        :scale="scale"
+        :is-fit="isFit"
+        :at-min-zoom="atMinZoom"
+        :at-max-zoom="atMaxZoom"
+        @zoom-in="zoomIn"
+        @zoom-out="zoomOut"
+        @fit="zoomFit"
+        @actual="zoomActual(store.safeArea)"
+      />
+    </div>
+
+    <!-- 空状态引导：明确「这不是截图」。仅在「适应」档位显示，放大核对细节时不遮挡画布 -->
     <div
+      v-if="isFit"
       class="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 rounded-full border border-dashed border-brand-500/50 bg-surface-900/80 px-4 py-1.5 text-xs text-brand-300 backdrop-blur"
     >
       {{ store.placement.name }}：表达品牌与季节内容，不是 App 截图
     </div>
 
     <div
-      v-if="!store.activeItem?.image"
+      v-if="isFit && !store.activeItem?.image"
       class="pointer-events-none absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full border border-line-700 bg-surface-900/70 px-3.5 py-1 text-[11px] text-ink-400 backdrop-blur"
     >
       未上传主体图 · 纯品牌排版同样合规
