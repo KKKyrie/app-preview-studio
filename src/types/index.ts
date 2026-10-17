@@ -133,6 +133,16 @@ export interface SharedAssetStore {
   items: SharedAssetItem[]
   activeItem: SharedAssetItem
   canvasSize: { width: number; height: number }
+  /**
+   * 排版基准宽度：字号 / 行距 / logo 尺寸都以它为比例基数。
+   *
+   * 截图模式 = 画布宽度（画布本身就是排版容器）；
+   * 创意素材 = **安全区宽度**（安全区才是排版容器，且它在各尺寸间
+   * 占画布 26.7%~56.5%，若按画布宽度定字号，通用素材上每行只剩 7 个字）。
+   *
+   * 面板上的 px 读数必须用这个，否则显示的数字与画布实际渲染对不上。
+   */
+  designWidth: number
   patchActive(partial: Partial<SharedAssetItem>): void
   patchBrand(partial: Partial<BrandSpec>): void
   patchText(key: 'headline' | 'subtitle', partial: Partial<TextSpec>): void

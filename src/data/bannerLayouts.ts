@@ -104,7 +104,7 @@ export const BANNER_LAYOUTS: BannerLayout[] = [
     id: 'centered-claim',
     name: '居中主张',
     hint: 'logo + 主标题 + 副标题居中于安全区，不放图片。最克制，符合 Apple 「单一清晰概念」的推荐。',
-    defaults: { textWidth: 0.9, textY: 0.16 },
+    defaults: { textWidth: 0.96, textY: 0.14 },
     fields: [
       { key: 'textWidth', label: '文案宽度', min: 0.55, max: 1, step: 0.01 },
       { key: 'textY', label: '文案距安全区顶部', min: 0, max: 0.75, step: 0.005 },

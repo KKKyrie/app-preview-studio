@@ -135,6 +135,14 @@ export const useProjectStore = defineStore('project', () => {
       : { width: s.height, height: s.width }
   })
 
+  /**
+   * 截图模式的排版基准 = 画布宽度。
+   *
+   * 截图画布本身就是排版容器（Apple 要求截图满画布展示），所以沿用画布宽度；
+   * 创意素材则改用安全区宽度，见 stores/creative.ts。
+   */
+  const designWidth = computed(() => canvasSize.value.width)
+
   /* ── 选择与编辑 ── */
 
   function select(id: string) {
@@ -286,6 +294,7 @@ export const useProjectStore = defineStore('project', () => {
     activeItem,
     size,
     canvasSize,
+    designWidth,
     select,
     patchActive,
     patchText,

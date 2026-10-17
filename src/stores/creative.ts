@@ -37,11 +37,11 @@ function uid(): string {
 }
 
 /**
- * 创意素材的品牌默认值比截图模式小一档：logo 0.028 × 3840 ≈ 108px，
- * 在 661px 高的页头安全区里约占 16%，与主标题比例协调。
+ * 创意素材的品牌默认值以**安全区宽度**为基准。
+ * logo 0.055 × 1646 ≈ 91px，在 661px 高的安全区里约占 14%，与 132px 的主标题比例协调。
  */
 export function defaultBrand(): BrandSpec {
-  return { logo: null, name: '', logoSize: 0.028, logoRadius: 0, nameSize: 0.02 }
+  return { logo: null, name: '', logoSize: 0.055, logoRadius: 0, nameSize: 0.038 }
 }
 
 function normalizeBrand(raw: Partial<BrandSpec> | null | undefined): BrandSpec {
@@ -57,12 +57,12 @@ function normalizeBrand(raw: Partial<BrandSpec> | null | undefined): BrandSpec {
 }
 
 /**
- * 创意素材的字号默认值明显小于截图模式。
+ * 创意素材的字号默认值以**安全区宽度**为基准（见 designWidth）。
  *
- * 页头安全区只有 1646×661 px：按截图模式的默认值（主标题 0.072）会得到
- * 276px 的字号，一行仅放得下约 5 个汉字，必然撑爆安全区。
- * 这里按「品牌 + 主标题 + 副标题 ≈ 419px 高」调参，在 661px 安全区内留有余量。
- * 字号仍以画布宽度比例存储，因此切到通用素材(5244 宽)时屏幕上视觉大小不变。
+ * 目标：各尺寸下每行都能放约 12 个汉字。
+ *   1646 × 0.98 / 12 ≈ 134px → 0.08 × 1646 = 132px ✓
+ *   1402 × 0.98 / 12 ≈ 114px → 0.08 × 1402 = 112px ✓
+ * 副标题取主标题的 0.4 倍，logo 取 0.055，视觉层级清晰且不挤。
  */
 function createItem(): CreativeItem {
   const layout = BANNER_LAYOUTS[0]
@@ -74,14 +74,14 @@ function createItem(): CreativeItem {
     themeId: THEMES[0].id,
     headline: {
       text: '发现新的可能',
-      size: 0.034,
+      size: 0.08,
       weight: 800,
       color: '',
       font: DEFAULT_FONT_ID,
     },
     subtitle: {
       text: '',
-      size: 0.015,
+      size: 0.032,
       weight: 500,
       color: '',
       font: DEFAULT_FONT_ID,
@@ -164,6 +164,18 @@ export const useCreativeStore = defineStore('creative', () => {
    * 「坑位有唯一安全区、换个尺寸等比缩放」。
    */
   const safeArea = computed(() => canvas.value.safeArea)
+
+  /**
+   * 创意素材的排版基准 = **安全区宽度**，不是画布宽度。
+   *
+   * 安全区才是排版容器，而它占画布宽度的比例在各尺寸间差异极大：
+   *   3840×1646 → 42.9%    3840×2560 → 56.5%
+   *   5244×2950 → 26.7%    1920×1280 → 56.5%
+   * 若字号按画布宽度定（0.034 × 5244 = 178px），在 5244×2950 的安全区里
+   * 每行只能放 7 个汉字；改按安全区宽度定（0.08 × 1402 = 112px）后每行能放
+   * 12 个，且**五个尺寸的每行容量趋于一致**（见 docs §12 的实测表）。
+   */
+  const designWidth = computed(() => safeArea.value.width)
 
   /* ── 选择与编辑 ── */
 
@@ -327,6 +339,7 @@ export const useCreativeStore = defineStore('creative', () => {
     canvas,
     canvasSize,
     safeArea,
+    designWidth,
     showSafeArea,
     checkImage,
     select,

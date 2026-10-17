@@ -14,14 +14,14 @@ const NO_BOXES: Map<string, Rect> = new Map()
 const NO_VIOLATIONS: SafeAreaViolation[] = []
 
 /**
- * 文字行间距（占画布宽度比例）。
+ * 文字行间距（**占安全区宽度**的比例）。
  *
- * 截图模式用 0.032，在 1284 宽的竖屏画布上是 ~41px，视觉疏朗。
- * 但页头安全区只有 661px 高，0.032 × 3840 = 123px 的间距会把整块文案顶出安全区，
- * 因此这里显式收窄。默认值（品牌 + 主标题 + 副标题）约 419px，安全区留有余量。
+ * TextLayer 收到的 canvasW 是安全区宽度，所以这里的比例也跟着安全区走，
+ * 五个尺寸的疏朗程度一致。若沿用截图模式的 0.032，在 5244×2950 上会是
+ * 0.032 × 1402 = 45px，相对 112px 的标题字号过宽，视觉松散。
  */
-const GAP_RATIO = 0.008
-const LOGO_GAP_RATIO = 0.012
+const GAP_RATIO = 0.02
+const LOGO_GAP_RATIO = 0.014
 
 /**
  * 创意素材画布（产品页头 / 搜索结果 / 通用素材）。
@@ -221,7 +221,7 @@ const textPlacement = computed(() => ({
       :subtitle="item.subtitle"
       :placement="textPlacement"
       :tokens="tokens"
-      :canvas-w="width"
+      :canvas-w="safe.width"
       :brand="brand"
       :gap-ratio="GAP_RATIO"
       :logo-gap-ratio="LOGO_GAP_RATIO"

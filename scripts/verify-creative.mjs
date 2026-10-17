@@ -295,6 +295,37 @@ try {
   const searchUni = await text('[data-size-badge]')
   check('搜索结果图也可选共用的 5244 × 2950', searchUni === '5244 × 2950', searchUni)
 
+  /* ── 8b. 排版密度一致性 ──────────────────────────────────────────────
+   * 字号以「安全区宽度」为基准，因此五个尺寸下每行能放的字数应当一致。
+   * 若将来有人把字号改回按画布宽度计算，安全区占画布 26.7%~56.5% 的差异
+   * 会让 5244×2950 每行只剩 7 个字——这条断言就是防这个的。
+   */
+  const density = []
+  for (const key of [
+    'header:3840x1646',
+    'header:5244x2950',
+    'search:3840x2560',
+    'search:1920x1280',
+    'search:5244x2950',
+  ]) {
+    await clickBy(`[data-canvas-opt="${key}"]`)
+    await new Promise((r) => setTimeout(r, 500))
+    density.push(
+      await page.evaluate(() => {
+        const canvas = document.querySelector('main [data-canvas]')
+        const hl = canvas?.querySelector('[data-role="headline"]')
+        if (!hl) return 0
+        const fs = parseFloat(getComputedStyle(hl).fontSize)
+        return Math.floor(hl.offsetWidth / (fs * 0.985))
+      }),
+    )
+  }
+  check(
+    '五个尺寸下标题每行容量一致（字号按安全区宽度计算）',
+    new Set(density).size === 1,
+    `每行字数: ${density.join(' / ')}`,
+  )
+
   /* ── 9. 持久化：刷新后恢复 ── */
   await page.reload({ waitUntil: 'networkidle0' })
   await new Promise((r) => setTimeout(r, 600))
@@ -305,6 +336,21 @@ try {
 
   const sizeAfterReload = await text('[data-size-badge]')
   check('刷新后坑位与尺寸恢复', sizeAfterReload === '5244 × 2950', sizeAfterReload)
+
+  /* ── 9b. 截图模式的 px 读数未被 designWidth 改动影响 ── */
+  await clickBy('[data-mode-btn="screenshot"]')
+  await new Promise((r) => setTimeout(r, 500))
+  const shotDesignW = await page.evaluate(() => {
+    const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('project')
+    return { designW: s.designWidth, canvasW: s.canvasSize.width }
+  })
+  check(
+    '截图模式排版基准 = 画布宽度（未被改动）',
+    shotDesignW.designW === shotDesignW.canvasW,
+    `designWidth=${shotDesignW.designW} canvasWidth=${shotDesignW.canvasW}`,
+  )
+  await clickBy('[data-mode-btn="creative"]')
+  await new Promise((r) => setTimeout(r, 400))
 
   /* ── 10. 隔离：两份项目互不串味 ── */
   const shotJson = await page.evaluate((k) => localStorage.getItem(k), SCREENSHOT_KEY)
