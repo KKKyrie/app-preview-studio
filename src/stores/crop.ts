@@ -178,10 +178,14 @@ export const useCropStore = defineStore('crop', () => {
   }
 
   /**
-   * 导入一张图片：**空位优先**，否则追加。
+   * 导入一张图片：**当前空位优先，其次第一个空位，否则追加**。
    *
-   * 列表初始就有一个空位，因此「拖一张图进来」总是填进那个空位而不是凭空
-   * 新增第二项——否则用户第一次导入就会看到两个条目、其中一个空的。
+   * 「当前空位优先」是为了让「清空图片 → 导入」填回同一行：用户点中第 3 行、
+   * 清空它、再导入，新图必须落在第 3 行 —— 若按「第一个空位」抓，新图会跳到
+   * 第 1 个空位，行序一乱用户就会以为换图没生效。
+   *
+   * 列表初始就有一个空位且它就是激活项，所以首次导入仍然填那个空位、
+   * 不会凭空多出一条。
    */
   function importImage(
     image: string,
@@ -189,7 +193,8 @@ export const useCropStore = defineStore('crop', () => {
     width: number,
     height: number,
   ): CropImportResult {
-    const target = items.value.find((i) => !i.image)
+    const active = activeItem.value
+    const target = active && !active.image ? active : items.value.find((i) => !i.image)
     if (target) {
       Object.assign(target, {
         image,
@@ -243,7 +248,13 @@ export const useCropStore = defineStore('crop', () => {
     return true
   }
 
-  /** 只清掉图片，条目回到空位状态 */
+  /**
+   * 只清掉图片，条目回到空位状态。
+   *
+   * 与 `removeItem` 的区别是**保留这一行的位置**：清空之后导入会填回这一行
+   * （见 `importImage` 的「当前空位优先」），因此「清空图片 → 导入」等价于
+   * 「换一张」，行序不变。
+   */
   function clearItem(id: string) {
     const item = items.value.find((i) => i.id === id)
     if (!item) return

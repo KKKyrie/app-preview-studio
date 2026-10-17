@@ -571,6 +571,21 @@ export function useExport() {
     return { kind: 'crop' as const, item, width: size.width, height: size.height }
   }
 
+  /**
+   * 多张成品时的文件名编号。
+   *
+   * 裁剪列表本来就是给**一批**成品图用的，而导出文件名里此前没有任何条目区分，
+   * 于是逐张导出会产出同名文件 —— 第 2 张起被浏览器改成 `xxx(1).png`，
+   * 用户只能自己猜哪个是哪个。编号取列表里的位置，与缩略图角标「图片 N」一致。
+   *
+   * 只有一张成品时不加编号，保持文件名干净（也是既有行为）。
+   */
+  function cropItemTag(item: CropItem): string {
+    if (crop.items.filter((i) => i.image).length < 2) return ''
+    const idx = crop.items.findIndex((i) => i.id === item.id)
+    return idx < 0 ? '' : `图片${idx + 1}_`
+  }
+
   /** 导出当前画框尺寸（单张 PNG） */
   async function exportCropActive() {
     if (exporting.value) return
@@ -584,7 +599,7 @@ export function useExport() {
       const dataUrl = await renderJob(cropJob(item, crop.canvasSize))
       downloadUrl(
         dataUrl,
-        `${base}_${crop.canvas.aspect.replace(':', 'x')}${both}_${width}x${height}.png`,
+        `${base}_${cropItemTag(item)}${crop.canvas.aspect.replace(':', 'x')}${both}_${width}x${height}.png`,
       )
     } finally {
       exporting.value = false
@@ -612,7 +627,7 @@ export function useExport() {
       for (const c of sizes) {
         const dataUrl = await renderJob(cropJob(item, { width: c.width, height: c.height }))
         const both = c.universal ? '_通用双坑位' : ''
-        files[`${base}_${c.aspect.replace(':', 'x')}${both}_${c.width}x${c.height}.png`] =
+        files[`${base}_${cropItemTag(item)}${c.aspect.replace(':', 'x')}${both}_${c.width}x${c.height}.png`] =
           await dataUrlToBytes(dataUrl)
         progress.current += 1
         await new Promise((r) => setTimeout(r, 0))

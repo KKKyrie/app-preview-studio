@@ -32,6 +32,8 @@ const innerStyle = computed(() => ({
 const filled = computed(() => store.items.filter((i) => i.image).length)
 /** 删到一条不剩是允许的（0 条是合法状态，见 store.removeItem） */
 const canRemove = computed(() => store.items.length > 0)
+/** 清空图片需要激活项里有图 */
+const canClear = computed(() => !!store.activeItem?.image)
 const canAdd = computed(() => store.items.length < MAX_CROP_ITEMS)
 const notice = ref('')
 
@@ -54,7 +56,7 @@ async function onPick(e: Event) {
     >
       <p class="text-[11px] text-ink-400">还没有图片</p>
       <p class="mt-1 text-[10px] leading-relaxed text-ink-500">
-        用下面的「导入图片」，或直接把图拖进窗口 / ⌘V 粘贴
+        用下面的「＋ 导入」，或直接把图拖进窗口 / ⌘V 粘贴
       </p>
     </div>
 
@@ -100,7 +102,7 @@ async function onPick(e: Event) {
       </button>
     </div>
 
-    <div class="mt-2 grid grid-cols-2 gap-1.5">
+    <div class="mt-2 grid grid-cols-3 gap-1.5">
       <button
         type="button"
         data-crop-import
@@ -108,14 +110,28 @@ async function onPick(e: Event) {
         :disabled="!canAdd"
         @click="fileEl?.click()"
       >
-        ＋ 导入图片
+        ＋ 导入
+      </button>
+      <button
+        type="button"
+        data-crop-clear
+        class="rounded-md bg-surface-700 py-1.5 text-[11px] text-ink-200 transition hover:bg-surface-600 disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="!canClear"
+        :title="
+          canClear
+            ? '只去掉图片、保留这一行的位置：接着导入就会填回这一行（换一张）'
+            : '当前这张已经是空位'
+        "
+        @click="store.clearItem(store.activeItemId)"
+      >
+        ✕ 清空图片
       </button>
       <button
         type="button"
         data-crop-remove
         class="rounded-md bg-surface-700 py-1.5 text-[11px] text-ink-200 transition hover:bg-surface-600 disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="!canRemove"
-        :title="canRemove ? '移除当前这张（列表可以删空）' : '列表已空'"
+        :title="canRemove ? '把这一行整个移掉（列表可以删空）' : '列表已空'"
         @click="store.removeItem(store.activeItemId)"
       >
         🗑 删除
@@ -136,6 +152,10 @@ async function onPick(e: Event) {
     <p class="mt-2 text-[10px] leading-relaxed text-ink-500">
       可一次导入多张（也可以直接拖进窗口 / ⌘V 粘贴）。每张图各自记忆构图，
       切换画框尺寸时构图按比例保留。
+    </p>
+    <p class="mt-1.5 text-[10px] leading-relaxed text-ink-500">
+      「清空图片」保留行的位置（接着导入会填回这一行，等于换一张）；
+      「删除」把整行移掉。
     </p>
   </PanelSection>
 </template>

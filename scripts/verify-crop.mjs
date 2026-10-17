@@ -651,6 +651,97 @@ try {
     `items=${recovered.items} filled=${recovered.filled} zoom=${recovered.zoom}`,
   )
 
+  /* ── 18. 换图出口 + 多图导出不重名 ── */
+  const rowsOf = () =>
+    page.evaluate(() => {
+      const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('crop')
+      return s.items.map((i) => ({
+        img: !!i.image,
+        w: i.width,
+        zoom: Number(i.zoom.toFixed(3)),
+      }))
+    })
+
+  await importImage(2000, 2000, 'b.png')
+  await importImage(1800, 1200, 'c.png')
+  let rows = await rowsOf()
+  check(
+    '凑到 3 张（供换图 / 文件名断言用）',
+    rows.length === 3 && rows.every((r) => r.img),
+    JSON.stringify(rows),
+  )
+
+  // 换图：点中第 1 行 → 给它一个非居中构图 → 清空 → 再导入，新图必须回到第 1 行
+  await clickBy('[data-crop-item="0"]')
+  await new Promise((r) => setTimeout(r, 250))
+  await page.evaluate(() => {
+    const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('crop')
+    s.setZoom(1.6)
+    s.setAxis('y', 0.5)
+  })
+  check(
+    '「清空图片」在激活项有图时可用',
+    !(await page.evaluate(() => document.querySelector('aside [data-crop-clear]').disabled)),
+  )
+
+  await clickBy('aside [data-crop-clear]')
+  await new Promise((r) => setTimeout(r, 300))
+  rows = await rowsOf()
+  check(
+    '清空图片只清图片：行数不变、该行回到空位、其余行不受影响',
+    rows.length === 3 && !rows[0].img && rows[1].img && rows[2].img,
+    JSON.stringify(rows),
+  )
+  check('清空后构图一并重置（zoom 回到 1）', rows[0].zoom === 1, `zoom=${rows[0].zoom}`)
+  check(
+    '清空后「清空图片」置灰（这一行已经是空位）',
+    await page.evaluate(() => document.querySelector('aside [data-crop-clear]').disabled),
+  )
+
+  await importImage(2600, 1400, 'd.png')
+  rows = await rowsOf()
+  check(
+    '**导入填回被清空的那一行**（不追加到队尾、也不跳到别的空位）',
+    rows.length === 3 && rows[0].img && rows[0].w === 2600,
+    JSON.stringify(rows),
+  )
+
+  // 文件名：多张成品时必须能区分是哪一个条目
+  await clearDownloads(downloadDir)
+  await clickBy('[data-crop-item="0"]')
+  await new Promise((r) => setTimeout(r, 250))
+  await clickBy('[data-export-active]')
+  const firstPng = await latestFile(downloadDir, '.png')
+  await clearDownloads(downloadDir)
+  await clickBy('[data-crop-item="1"]')
+  await new Promise((r) => setTimeout(r, 250))
+  await clickBy('[data-export-active]')
+  const secondPng = await latestFile(downloadDir, '.png')
+  const name1 = firstPng.split('/').pop()
+  const name2 = secondPng.split('/').pop()
+  check(
+    '多张成品：导出文件名带列表位置（图片 N）',
+    name1.includes('图片1') && name2.includes('图片2'),
+    `${name1} / ${name2}`,
+  )
+  check(
+    '**不同条目导出的文件名不重名**（旧版同名，第 2 张被浏览器改成 xxx(1).png）',
+    name1 !== name2,
+    `${name1} vs ${name2}`,
+  )
+
+  // 只有一张成品时不加编号，保持文件名干净
+  await page.evaluate(() => {
+    const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('crop')
+    s.items.slice(1).forEach((i) => s.removeItem(i.id))
+  })
+  await new Promise((r) => setTimeout(r, 250))
+  await clearDownloads(downloadDir)
+  await clickBy('[data-export-active]')
+  const soloPng = await latestFile(downloadDir, '.png')
+  const soloName = soloPng.split('/').pop()
+  check('只有一张成品时文件名不带条目编号（保持干净）', !soloName.includes('图片'), soloName)
+
   check('页面无错误', pageErrors.length === 0, pageErrors.join(' | '))
 } finally {
   await browser.close()
