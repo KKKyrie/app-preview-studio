@@ -33,7 +33,7 @@ APP_URL=http://localhost:5175/ npm run verify:creative
 
 - 临时下载目录由 `mkdtemp` 创建、结束时自清；`KEEP=1` 保留产物供排查
 - 失败时置 `process.exitCode = 1`
-- `verify:creative`（46 项）动创意素材后必跑；`verify:crop`（59 项）动裁剪后必跑
+- `verify:creative`（55 项）动创意素材后必跑；`verify:crop`（59 项）动裁剪后必跑
 - **断言要挑「跑不了假的」**：`verify:crop` 会解码导出的 PNG 逐点比色（源图用纯色），量出「成品里有多少像素不是源图颜色」。裁剪图片被外部 CSS 截断那条 bug 只有这种断言抓得到 —— 画布 box、DOM 宽高、比例全都正常。
 
 ## 架构
@@ -100,6 +100,17 @@ APP_URL=http://localhost:5175/ npm run verify:creative
 - 上传主体图走 `stores/creative.ts` 的 **`setImage()`**，不要直接 `patchActive({ image })` —— 只有 `setImage` 会在当前版式不画图时自动换版式（否则上传后画布毫无变化，用户只能判定为 bug，`docs` §14）
 - 拖拽 / 粘贴与点击选择两条上传路径必须共用 `setImage()`，否则行为不一致
 - `verify:creative` 逐个版式交叉验证「标注 vs 实际渲染」，两个方向都锁着：既防「标了用图却不画」，也防「画了却标纯排版」
+
+### 存档版本号与迁移
+
+`stores/project.ts` / `creative.ts` / `crop.ts` 的快照都带 `version`，并在 `hydrate` 里做迁移。
+**改任何比率的语义时必须 +1 并写迁移**（只加字段不用），`docs` §17 有完整推导：
+
+- 迁移必须在 normalize **之前**：normalize 会给缺字段的条目填新基准默认值，之后再乘一遍就放大了一倍多
+- 迁移只作用于快照里**实际存在**的数值；参考系只能是快照当前的画布（唯一确定的那一个）
+- 迁移后 `wireStore` 会**立刻回写**（store 暴露的 `snapshotVersion` 与存档 `version` 不一致时），否则设备上永远留着旧版本，将来删掉迁移代码就是排版突变
+- 上界（如 `normalizeBrand` 的 clamp）要按迁移系数推导（最大 3.741），不能随手改小
+- **localStorage key 结尾的 `.v1` 是历史命名，与快照 `version` 字段无关，不能改**
 
 ### 裁剪工作台：画框锁定比例，构图存相对量
 

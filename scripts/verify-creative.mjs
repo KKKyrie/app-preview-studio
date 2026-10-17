@@ -633,6 +633,111 @@ try {
   const backBadge = await text('[data-size-badge]')
   check('切回截图工作台尺寸徽章正确', backBadge === '1284 × 2778', backBadge)
 
+  /* ── 12. v1 → v2 快照迁移（字号基准：画布宽度 → 安全区宽度）── */
+  await clickBy('[data-mode-btn="creative"]')
+  await new Promise((r) => setTimeout(r, 400))
+
+  // 造一份 v1 快照：比率按「画布宽度」解释，用 5244×2950（换算系数最大 = 3.741）
+  const V1 = {
+    version: 1,
+    projectName: 'v1 迁移测试',
+    placementId: 'header',
+    canvasId: '5244x2950',
+    activeItemId: 'legacy-1',
+    brand: { logo: null, name: 'Legacy', logoSize: 0.028, logoRadius: 0.25, nameSize: 0.02 },
+    items: [
+      {
+        id: 'legacy-1',
+        image: null,
+        imageName: null,
+        bannerLayoutId: 'centered-claim',
+        themeId: 'aurora',
+        headline: { text: '迁移测试', size: 0.034, weight: 800, color: '', font: 'system' },
+        subtitle: { text: '副标题', size: 0.015, weight: 500, color: '', font: 'system' },
+        params: {},
+        imageRadius: 0.04,
+        themeOverrides: {},
+      },
+      {
+        // 缺 size 的条目：normalize 会填**新基准**的默认值，迁移不能把它放大
+        id: 'legacy-2',
+        bannerLayoutId: 'centered-claim',
+        themeId: 'aurora',
+        headline: { text: '缺字号', weight: 800, color: '', font: 'system' },
+        params: {},
+        imageRadius: 0.04,
+        themeOverrides: {},
+      },
+    ],
+  }
+
+  const readRatios = () =>
+    page.evaluate(() => {
+      const s = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('creative')
+      const el = document.querySelector('main [data-role="headline"]')
+      return {
+        snapshotVersion: JSON.parse(localStorage.getItem('app-preview-studio.creative.v1')).version,
+        place: s.placementId,
+        canvas: `${s.canvasSize.width}×${s.canvasSize.height}`,
+        designW: s.designWidth,
+        args: s.items.map((i) => i.headline.size),
+        hit: s.activeItem.headline.size,
+        sub: s.activeItem.subtitle.size,
+        logo: s.brand.logoSize,
+        name: s.brand.nameSize,
+        rendered: el ? Number.parseFloat(getComputedStyle(el).fontSize) : null,
+      }
+    })
+
+  await page.evaluate(
+    ([key, v1]) => localStorage.setItem(key, JSON.stringify(v1)),
+    [CREATIVE_KEY, V1],
+  )
+  await page.reload({ waitUntil: 'networkidle0' })
+  await new Promise((r) => setTimeout(r, 900))
+  const m = await readRatios()
+  const K = 5244 / 1402 // 画布宽度 / 安全区宽度
+  check('v1 快照的坑位与尺寸被正确恢复', m.place === 'header' && m.canvas === '5244×2950', `${m.place} ${m.canvas}`)
+  check('迁移基准 = 安全区宽度', m.designW === 1402, `designWidth=${m.designW}`)
+  check(
+    '主标题比率按 画布宽度/安全区宽度 精确换算',
+    Math.abs(m.hit - 0.034 * K) < 1e-9,
+    `${m.hit.toFixed(6)}（期望 ${(0.034 * K).toFixed(6)}）`,
+  )
+  check(
+    '**渲染字号与升级前完全一致**（v1 下 0.034 × 5244 = 178.3px）',
+    Math.abs(m.rendered - 0.034 * 5244) < 0.5,
+    `${m.rendered}px（期望 ${(0.034 * 5244).toFixed(1)}px）`,
+  )
+  check('副标题、logo、品牌名一起换算', Math.abs(m.sub - 0.015 * K) < 1e-9 && Math.abs(m.logo - 0.028 * K) < 1e-9 && Math.abs(m.name - 0.02 * K) < 1e-9, `${m.sub.toFixed(4)} / ${m.logo.toFixed(4)} / ${m.name.toFixed(4)}`)
+  check(
+    '缺字号的旧条目用新基准默认值（0.08），没有被误放大',
+    Math.abs(m.args[1] - 0.08) < 1e-9,
+    `items[1].headline.size=${m.args[1]}`,
+  )
+  check('迁移后写回的是 v2 快照', m.snapshotVersion === 2, `version=${m.snapshotVersion}`)
+
+  // 幂等：再刷一次绝不能二次换算（否则每次刷新字号都会变大 3.7 倍）
+  await page.reload({ waitUntil: 'networkidle0' })
+  await new Promise((r) => setTimeout(r, 900))
+  const m2 = await readRatios()
+  check(
+    '**二次刷新不会重复换算**（幂等）',
+    Math.abs(m2.hit - m.hit) < 1e-9 && Math.abs(m2.rendered - m.rendered) < 0.5,
+    `size ${m.hit.toFixed(6)} → ${m2.hit.toFixed(6)}`,
+  )
+
+  // v2 快照必须原样保留：迁移只能对 v1 生效
+  await page.evaluate((key) => {
+    const raw = JSON.parse(localStorage.getItem(key))
+    raw.items[0].headline.size = 0.1
+    localStorage.setItem(key, JSON.stringify(raw))
+  }, CREATIVE_KEY)
+  await page.reload({ waitUntil: 'networkidle0' })
+  await new Promise((r) => setTimeout(r, 900))
+  const m3 = await readRatios()
+  check('v2 快照的比率不再被换算', Math.abs(m3.hit - 0.1) < 1e-9, `size=${m3.hit}`)
+
   check('页面无错误', pageErrors.length === 0, pageErrors.join(' | '))
 } finally {
   await browser.close()

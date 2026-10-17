@@ -35,7 +35,11 @@ export const CROP_STORAGE_KEY = 'app-preview-studio.crop.v1'
 export type CropImportResult = 'filled' | 'appended' | 'full'
 
 export interface CropSnapshot {
-  version: 1
+  /**
+   * 快照版本。**改变构图语义（如 zoom 的含义）时必须 +1 并写迁移**，
+   * 否则旧存档的构图会被静默按新语义解释。只加字段不用 +1。
+   */
+  version: number
   projectName: string
   placementId: PlacementId
   /** `宽x高` 字符串 */
@@ -43,6 +47,8 @@ export interface CropSnapshot {
   activeItemId: string
   items: CropItem[]
 }
+
+export const CROP_SNAPSHOT_VERSION = 1
 
 function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -303,7 +309,7 @@ export const useCropStore = defineStore('crop', () => {
 
   function snapshot(opts: { withImages: boolean }): CropSnapshot {
     return {
-      version: 1,
+      version: CROP_SNAPSHOT_VERSION,
       projectName: projectName.value,
       placementId: placementId.value,
       canvasId: canvasId.value,
@@ -349,6 +355,7 @@ export const useCropStore = defineStore('crop', () => {
     canvasSize,
     safeArea,
     showSafeArea,
+    snapshotVersion: CROP_SNAPSHOT_VERSION,
     cropBox,
     slack,
     cropLocked,

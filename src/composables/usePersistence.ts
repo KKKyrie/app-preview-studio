@@ -26,6 +26,11 @@ interface PersistableStore {
   brand?: BrandSpec
   /** 品牌 logo 的 IndexedDB key；`null` = 该工作台没有品牌 */
   brandKey: string | null
+  /**
+   * 快照的当前版本。与存档里的 `version` 不一致 = 旧存档被 hydrate 迁移过，
+   * 此时必须**立刻回写**（见 wireStore 里的 stale 分支）。
+   */
+  snapshotVersion?: number
   snapshot(opts: { withImages: boolean }): unknown
   hydrate(raw: unknown): boolean
 }
@@ -40,9 +45,18 @@ export function usePersistence() {
 /** 把一个素材 store 接到 localStorage + IndexedDB 上 */
 function wireStore(store: PersistableStore, label: string) {
   // 1. 恢复配置（同步，首帧前完成）
+  let stale = false
   try {
     const raw = localStorage.getItem(store.storageKey)
-    if (raw) store.hydrate(JSON.parse(raw))
+    if (raw) {
+      const parsed = JSON.parse(raw) as { version?: unknown }
+      store.hydrate(parsed)
+      // 旧版本的存档刚被 hydrate 迁移过，但迁移只发生在内存里 —— 不回写的话
+      // 设备上永远留着旧版本，每次打开都要重新迁移一遍。那样一旦将来删掉这段
+      // 迁移代码，这些存档就会被静默按新语义解释（排版突变，用户毫无线索）。
+      stale =
+        typeof store.snapshotVersion === 'number' && parsed?.version !== store.snapshotVersion
+    }
   } catch (e) {
     console.warn(`[persistence] 读取本地${label}项目失败`, e)
   }
@@ -112,4 +126,7 @@ function wireStore(store: PersistableStore, label: string) {
       timer = setTimeout(save, 400)
     },
   )
+
+  // 4. 迁移过的旧存档立刻回写（不等用户的下一次编辑）
+  if (stale) save()
 }

@@ -27,10 +27,17 @@ export interface ScreenshotSize {
   devices: string
 }
 
-/** 文本配置；字号用「画布宽度比例」存储，切换尺寸后等比缩放 */
+/**
+ * 文本配置。
+ *
+ * 字号存**占 `designWidth` 的比率**，切换尺寸后等比缩放：
+ *   截图模式 designWidth = 画布宽度（画布本身就是排版容器）
+ *   创意素材 designWidth = **安全区宽度**（安全区才是排版容器）
+ * 见 `SharedAssetStore.designWidth` 与 docs §12。
+ */
 export interface TextSpec {
   text: string
-  /** 字号 = 画布宽度 × size，如 0.072 */
+  /** 字号 = designWidth × size，如 0.072（截图）/ 0.08（创意素材） */
   size: number
   weight: number
   /** 空字符串表示跟随主题色 */
@@ -45,11 +52,11 @@ export interface BrandSpec {
   logo: string | null
   /** 品牌名（展示在 logo 右侧 / 主标题上方） */
   name: string
-  /** logo 高度 = 画布宽度 × logoSize */
+  /** logo 高度 = designWidth × logoSize */
   logoSize: number
   /** logo 圆角（占 logo 盒子的比例：0 = 直角，0.5 = 圆形，0.22 ≈ iOS 图标） */
   logoRadius: number
-  /** 品牌名字号 = 画布宽度 × nameSize */
+  /** 品牌名字号 = designWidth × nameSize */
   nameSize: number
 }
 

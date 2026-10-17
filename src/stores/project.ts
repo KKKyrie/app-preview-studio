@@ -16,7 +16,14 @@ const BRAND_KEY = '__brand__'
 
 /** 项目快照（localStorage 配置 / 项目 JSON 共用结构） */
 export interface ProjectSnapshot {
-  version: 1
+  /**
+   * 快照版本。**改变任何比率的语义时必须 +1 并写迁移**（只加字段不用），
+   * 否则旧存档会被静默按新语义解释 —— 打开时排版全变，用户没有任何线索。
+   *
+   * ⚠️ 与 localStorage key 结尾的 `.v1` 无关：那是 key 的历史命名，不能改
+   * （改了用户已有项目就丢了）。
+   */
+  version: number
   projectName: string
   sizeId: string
   orientation: Orientation
@@ -24,6 +31,8 @@ export interface ProjectSnapshot {
   brand: BrandSpec
   items: CanvasItem[]
 }
+
+export const PROJECT_SNAPSHOT_VERSION = 1
 
 function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -243,7 +252,7 @@ export const useProjectStore = defineStore('project', () => {
 
   function snapshot(opts: { withImages: boolean }): ProjectSnapshot {
     return {
-      version: 1,
+      version: PROJECT_SNAPSHOT_VERSION,
       projectName: projectName.value,
       sizeId: sizeId.value,
       orientation: orientation.value,
@@ -295,6 +304,7 @@ export const useProjectStore = defineStore('project', () => {
     size,
     canvasSize,
     designWidth,
+    snapshotVersion: PROJECT_SNAPSHOT_VERSION,
     select,
     patchActive,
     patchText,

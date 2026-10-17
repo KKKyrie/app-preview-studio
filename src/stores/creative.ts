@@ -22,7 +22,14 @@ export const CREATIVE_STORAGE_KEY = 'app-preview-studio.creative.v1'
 const CREATIVE_BRAND_KEY = '__creative_brand__'
 
 export interface CreativeSnapshot {
-  version: 1
+  /**
+   * 快照版本。**改变任何比率的语义时必须 +1 并写迁移**（只加字段不用）：
+   *   v1 → 字号 / logo 的基准是**画布宽度**
+   *   v2 → 基准改为**安全区宽度**（见 docs §12 / §17）
+   * 不写迁移的话，旧快照里的比率会被静默按新基准解释 —— 打开时排版全变，
+   * 而且用户没有任何线索知道为什么。
+   */
+  version: number
   projectName: string
   placementId: PlacementId
   /** `宽x高` 字符串 */
@@ -30,6 +37,35 @@ export interface CreativeSnapshot {
   activeItemId: string
   brand: BrandSpec
   items: CreativeItem[]
+}
+
+export const CREATIVE_SNAPSHOT_VERSION = 2
+
+/**
+ * v1 → v2：把「占画布宽度」的比率换算成「占安全区宽度」的比率。
+ *
+ * v1 的语义是确定的（渲染 px = 比率 × 画布宽度），因此这是**精确换算**而不是猜：
+ *   newRatio = ratio × 画布宽度 / 安全区宽度
+ * 换算后当前画布上的渲染 px 与升级前**完全一致**。
+ *
+ * 只换算快照里**实际存在**的数值：缺字段的条目保持缺失，normalize 会填入
+ * 已经是新基准的默认值，不会被误放大一倍多。
+ *
+ * 注意换算的参考系只能是快照里当前的画布 —— 这是唯一确定的那一个。
+ * 同一份比率在其他画布上的 px 会变，但这是比率模型本身的性质（v1 也一样），
+ * 不是迁移引入的。
+ */
+function migrateV1ToV2(s: Partial<CreativeSnapshot>, k: number) {
+  const scale = (holder: unknown, key: string) => {
+    const h = holder as Record<string, unknown> | undefined
+    if (h && typeof h[key] === 'number') h[key] = (h[key] as number) * k
+  }
+  for (const item of s.items ?? []) {
+    scale(item.headline, 'size')
+    scale(item.subtitle, 'size')
+  }
+  scale(s.brand, 'logoSize')
+  scale(s.brand, 'nameSize')
 }
 
 function uid(): string {
@@ -44,15 +80,22 @@ export function defaultBrand(): BrandSpec {
   return { logo: null, name: '', logoSize: 0.055, logoRadius: 0, nameSize: 0.038 }
 }
 
+/**
+ * 上界的推导（不要随手改小）：v1 快照迁移会先把比率乘以
+ * `画布宽度 / 安全区宽度`，这个系数的最大值是 5244 / 1402 ≈ 3.741。
+ * v1 时代 logoSize 的上界是 0.15、nameSize 是 0.1，因此迁移后的最大值分别是
+ * 0.561 与 0.374 —— 上界取 0.6 / 0.4 才能保证**任何 v1 存档都不会被裁**，
+ * 否则用户升级后 logo 会莫名其妙变小，而且没有任何提示。
+ */
 function normalizeBrand(raw: Partial<BrandSpec> | null | undefined): BrandSpec {
   const base = defaultBrand()
   const b = raw ?? {}
   return {
     logo: typeof b.logo === 'string' ? b.logo : null,
     name: typeof b.name === 'string' ? b.name : '',
-    logoSize: typeof b.logoSize === 'number' ? Math.min(0.15, Math.max(0.01, b.logoSize)) : base.logoSize,
+    logoSize: typeof b.logoSize === 'number' ? Math.min(0.6, Math.max(0.01, b.logoSize)) : base.logoSize,
     logoRadius: typeof b.logoRadius === 'number' ? Math.min(0.5, Math.max(0, b.logoRadius)) : base.logoRadius,
-    nameSize: typeof b.nameSize === 'number' ? Math.min(0.1, Math.max(0.01, b.nameSize)) : base.nameSize,
+    nameSize: typeof b.nameSize === 'number' ? Math.min(0.4, Math.max(0.01, b.nameSize)) : base.nameSize,
   }
 }
 
@@ -311,7 +354,7 @@ export const useCreativeStore = defineStore('creative', () => {
 
   function snapshot(opts: { withImages: boolean }): CreativeSnapshot {
     return {
-      version: 1,
+      version: CREATIVE_SNAPSHOT_VERSION,
       projectName: projectName.value,
       placementId: placementId.value,
       canvasId: canvasId.value,
@@ -331,6 +374,13 @@ export const useCreativeStore = defineStore('creative', () => {
       // 旧项目可能带着已下线的「通用素材」坑位 id，getPlacement 会回退到标题图；
       // canvasId 同样用 resolveCanvasOption 容错，手改 JSON 也不会炸。
       canvasId.value = typeof s.canvasId === 'string' ? s.canvasId : DEFAULT_CANVAS_ID
+      // 基准换算必须在 normalize 之前：normalize 会给缺字段的条目填默认值，
+      // 而默认值已经是新基准，再乘一次就会被放大一倍多。
+      // 也必须在画布解析之后：换算的参考系就是当前画布。
+      if (typeof s.version !== 'number' || s.version < 2) {
+        const opt = resolveCanvasOption(placement.value, canvasId.value)
+        migrateV1ToV2(s, opt.width / opt.safeArea.width)
+      }
       brand.value = normalizeBrand(s.brand)
       items.value = s.items.map((i) => normalizeItem(i)).slice(0, MAX_VARIANTS)
       activeItemId.value =
@@ -363,6 +413,7 @@ export const useCreativeStore = defineStore('creative', () => {
     canvasSize,
     safeArea,
     designWidth,
+    snapshotVersion: CREATIVE_SNAPSHOT_VERSION,
     showSafeArea,
     checkImage,
     select,
